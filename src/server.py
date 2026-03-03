@@ -11,7 +11,6 @@ from fastmcp import FastMCP
 load_dotenv()
 
 API_KEY = os.environ["INTERVALS_API_KEY"]
-ATHLETE_ID = os.environ.get("INTERVALS_ATHLETE_ID", "0")
 BASE_URL = "https://intervals.icu/api/v1"
 
 mcp = FastMCP("intervals-icu")
@@ -60,9 +59,13 @@ async def _put(path: str, body: dict):
 
 
 @mcp.tool()
-async def get_athlete() -> dict:
-    """Get the athlete's profile (name, weight, FTP, resting HR, timezone, gear)."""
-    return await _get(f"/athlete/{ATHLETE_ID}")
+async def get_athlete(athlete_id: str = "0") -> dict:
+    """Get an athlete's profile (name, weight, FTP, resting HR, timezone, gear).
+
+    Args:
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+    """
+    return await _get(f"/athlete/{athlete_id}")
 
 
 @mcp.tool()
@@ -74,26 +77,27 @@ async def list_activities(days: int = 14, limit: int = 10) -> list:
         limit: Maximum number of activities to return (default 10).
     """
     oldest = (date.today() - timedelta(days=days)).isoformat()
-    return await _get(f"/athlete/{ATHLETE_ID}/activities", oldest=oldest, limit=limit)
+    return await _get(f"/athlete/0/activities", oldest=oldest, limit=limit)
 
 
 @mcp.tool()
-async def get_wellness(days: int = 7) -> list:
+async def get_wellness(days: int = 7, athlete_id: str = "0") -> list:
     """Get daily wellness records including fitness (CTL), fatigue (ATL), form (TSB),
     HRV, resting HR, sleep duration and score, weight, and other health metrics.
 
     Args:
         days: How many days of history to return (default 7).
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
     """
     oldest = (date.today() - timedelta(days=days)).isoformat()
-    return await _get(f"/athlete/{ATHLETE_ID}/wellness", oldest=oldest)
+    return await _get(f"/athlete/{athlete_id}/wellness", oldest=oldest)
 
 
 @mcp.tool()
 async def list_gear() -> list:
     """List all gear (bikes, shoes, components) with total distance, time, activity
     count, and any maintenance reminders."""
-    return await _get(f"/athlete/{ATHLETE_ID}/gear")
+    return await _get(f"/athlete/0/gear")
 
 
 @mcp.tool()
@@ -119,7 +123,7 @@ async def list_events(days_ahead: int = 7, days_back: int = 0, category: str | N
     oldest = (date.today() - timedelta(days=days_back)).isoformat()
     newest = (date.today() + timedelta(days=days_ahead)).isoformat()
     return await _get(
-        f"/athlete/{ATHLETE_ID}/events",
+        f"/athlete/0/events",
         oldest=oldest,
         newest=newest,
         category=category,
@@ -127,25 +131,26 @@ async def list_events(days_ahead: int = 7, days_back: int = 0, category: str | N
 
 
 @mcp.tool()
-async def get_event(event_id: int) -> dict:
+async def get_event(event_id: int, athlete_id: str = "0") -> dict:
     """Get a single planned event (workout, note, race) by ID.
 
     Args:
         event_id: The event ID.
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
     """
-    return await _get(f"/athlete/{ATHLETE_ID}/events/{event_id}")
+    return await _get(f"/athlete/{athlete_id}/events/{event_id}")
 
 
 @mcp.tool()
 async def get_training_plan() -> dict:
     """Get the athlete's current training plan."""
-    return await _get(f"/athlete/{ATHLETE_ID}/training-plan")
+    return await _get(f"/athlete/0/training-plan")
 
 
 @mcp.tool()
 async def list_workouts() -> list:
     """List all workouts in the athlete's workout library."""
-    return await _get(f"/athlete/{ATHLETE_ID}/workouts")
+    return await _get(f"/athlete/0/workouts")
 
 
 @mcp.tool()
@@ -166,7 +171,7 @@ async def get_activity_streams(activity_id: str) -> dict:
 async def list_coached_athletes() -> list:
     """List all athletes the current user is coaching, with a recent summary of
     their training load, fitness, and activity data."""
-    return await _get(f"/athlete/{ATHLETE_ID}/athlete-summary")
+    return await _get(f"/athlete/0/athlete-summary")
 
 
 @mcp.tool()
@@ -248,13 +253,14 @@ async def update_athlete_event(
 
 
 @mcp.tool()
-async def delete_event(event_id: int) -> None:
-    """Delete an event (planned workout, note, race etc.) from the athlete's calendar.
+async def delete_event(event_id: int, athlete_id: str = "0") -> None:
+    """Delete an event (planned workout, note, race etc.) from an athlete's calendar.
 
     Args:
         event_id: The event ID to delete.
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
     """
-    await _delete(f"/athlete/{ATHLETE_ID}/events/{event_id}")
+    await _delete(f"/athlete/{athlete_id}/events/{event_id}")
 
 
 @mcp.tool()
@@ -263,14 +269,16 @@ async def create_note(
     name: str,
     description: str = "",
     end_date: str | None = None,
+    athlete_id: str = "0",
 ) -> dict:
-    """Create a note on the athlete's calendar (e.g. rest day, travel, illness, race trip).
+    """Create a note on an athlete's calendar (e.g. rest day, travel, illness, race trip).
 
     Args:
         date: Start date in ISO-8601 format (e.g. '2026-03-10').
         name: Title of the note.
         description: Optional body text for the note.
         end_date: Optional end date for multi-day notes (e.g. a trip). ISO-8601.
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
     """
     body = {
         "category": "NOTE",
@@ -280,7 +288,7 @@ async def create_note(
     }
     if end_date:
         body["end_date_local"] = f"{end_date}T00:00:00"
-    return await _post(f"/athlete/{ATHLETE_ID}/events", body)
+    return await _post(f"/athlete/{athlete_id}/events", body)
 
 
 CoachTick = Literal[1, 2, 3, 4, 5]
