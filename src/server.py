@@ -1,5 +1,6 @@
 """Intervals.icu MCP server — exposes training data as MCP tools."""
 
+import enum
 import os
 from datetime import date, timedelta
 from typing import Literal
@@ -13,49 +14,17 @@ load_dotenv()
 API_KEY = os.environ["INTERVALS_API_KEY"]
 BASE_URL = "https://intervals.icu/api/v1"
 
+
+class CoachTick(enum.IntEnum):
+    WTF = enum.auto()
+    POOR = enum.auto()
+    SEEN = enum.auto()
+    GOOD = enum.auto()
+    AMAZING = enum.auto()
+
+
 mcp = FastMCP("intervals-icu")
-
-
-async def _get(path: str, **params):
-    async with httpx.AsyncClient() as client:
-        r = await client.get(
-            f"{BASE_URL}{path}",
-            auth=("API_KEY", API_KEY),
-            params={k: v for k, v in params.items() if v is not None},
-        )
-        r.raise_for_status()
-        return r.json()
-
-
-async def _post(path: str, body: dict):
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            f"{BASE_URL}{path}",
-            auth=("API_KEY", API_KEY),
-            json=body,
-        )
-        r.raise_for_status()
-        return r.json()
-
-
-async def _delete(path: str):
-    async with httpx.AsyncClient() as client:
-        r = await client.delete(
-            f"{BASE_URL}{path}",
-            auth=("API_KEY", API_KEY),
-        )
-        r.raise_for_status()
-
-
-async def _put(path: str, body: dict):
-    async with httpx.AsyncClient() as client:
-        r = await client.put(
-            f"{BASE_URL}{path}",
-            auth=("API_KEY", API_KEY),
-            json=body,
-        )
-        r.raise_for_status()
-        return r.json()
+client = httpx.AsyncClient(base_url=BASE_URL, timeout=10.0, auth=("API_KEY", API_KEY))
 
 
 @mcp.tool()
@@ -65,19 +34,30 @@ async def get_athlete(athlete_id: str = "0") -> dict:
     Args:
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
     """
-    return await _get(f"/athlete/{athlete_id}")
+    data = await client.get(f"/athlete/{athlete_id}")
+    return data.json()
 
 
 @mcp.tool()
-async def list_activities(days: int = 14, limit: int = 10) -> list:
+async def list_activities_between_dates(
+    athlete_id: str = "0",
+    from_date: date = date.today(),
+    to_date: date = date.today(),
+) -> list:
     """List recent activities in descending date order.
 
     Args:
-        days: How many days back to look (default 14).
+        from_date:
+        to_date:
         limit: Maximum number of activities to return (default 10).
     """
-    oldest = (date.today() - timedelta(days=days)).isoformat()
-    return await _get(f"/athlete/0/activities", oldest=oldest, limit=limit)
+    data = await client.get(
+        f"/athlete/{athlete_id}/activities",
+        params=httpx.QueryParams(
+            oldest=from_date.isoformat(), newest=to_date.isoformat()
+        ),
+    )
+    return data.json()
 
 
 @mcp.tool()
@@ -90,14 +70,18 @@ async def get_wellness(days: int = 7, athlete_id: str = "0") -> list:
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
     """
     oldest = (date.today() - timedelta(days=days)).isoformat()
-    return await _get(f"/athlete/{athlete_id}/wellness", oldest=oldest)
+    data = await client.get(
+        f"/athlete/{athlete_id}/wellness", params=httpx.QueryParams(oldest=oldest)
+    )
+    return data.json()
 
 
 @mcp.tool()
-async def list_gear() -> list:
+async def list_gear(athlete_id: str = "0") -> list:
     """List all gear (bikes, shoes, components) with total distance, time, activity
     count, and any maintenance reminders."""
-    return await _get(f"/athlete/0/gear")
+    resp = await client.get(f"/athlete/{athlete_id}/gear")
+    return resp.json()
 
 
 @mcp.tool()
@@ -108,11 +92,17 @@ async def get_activity_intervals(activity_id: str) -> dict:
     Args:
         activity_id: The activity ID (e.g. 'i129230824').
     """
-    return await _get(f"/activity/{activity_id}/intervals")
+    resp = await client.get(f"/activity/{activity_id}/intervals")
+    return resp.json()
 
 
 @mcp.tool()
-async def list_events(days_ahead: int = 7, days_back: int = 0, category: str | None = None) -> list:
+async def list_events(
+    athlete_id: str = "0",
+    days_ahead: int = 7,
+    days_back: int = 0,
+    category: str | None = None,
+) -> list:
     """List planned events (workouts, notes, races) on the athlete's calendar.
 
     Args:
@@ -122,12 +112,15 @@ async def list_events(days_ahead: int = 7, days_back: int = 0, category: str | N
     """
     oldest = (date.today() - timedelta(days=days_back)).isoformat()
     newest = (date.today() + timedelta(days=days_ahead)).isoformat()
-    return await _get(
-        f"/athlete/0/events",
-        oldest=oldest,
-        newest=newest,
-        category=category,
+    data = await client.get(
+        f"/athlete/{athlete_id}/events",
+        params=httpx.QueryParams(
+            oldest=oldest,
+            newest=newest,
+            category=category,
+        ),
     )
+    return data.json()
 
 
 @mcp.tool()
@@ -138,53 +131,23 @@ async def get_event(event_id: int, athlete_id: str = "0") -> dict:
         event_id: The event ID.
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
     """
-    return await _get(f"/athlete/{athlete_id}/events/{event_id}")
+    resp = await client.get(f"/athlete/{athlete_id}/events/{event_id}")
+    return resp.json()
 
 
 @mcp.tool()
-async def get_training_plan() -> dict:
+async def get_training_plan(athlete_id: str = "0") -> dict:
     """Get the athlete's current training plan."""
-    return await _get(f"/athlete/0/training-plan")
-
-
-@mcp.tool()
-async def list_workouts() -> list:
-    """List all workouts in the athlete's workout library."""
-    return await _get(f"/athlete/0/workouts")
-
-
-@mcp.tool()
-async def get_activity_streams(activity_id: str) -> dict:
-    """Get the raw time-series data streams for an activity (power, HR, speed,
-    cadence, altitude, etc.) at one-second resolution.
-
-    Args:
-        activity_id: The activity ID (e.g. 'i129230824').
-    """
-    return await _get(f"/activity/{activity_id}/streams")
-
-
-# --- Coaching ---
+    resp = await client.get(f"/athlete/{athlete_id}/training-plan")
+    return resp.json()
 
 
 @mcp.tool()
 async def list_coached_athletes() -> list:
     """List all athletes the current user is coaching, with a recent summary of
     their training load, fitness, and activity data."""
-    return await _get(f"/athlete/0/athlete-summary")
-
-
-@mcp.tool()
-async def list_athlete_activities(athlete_id: str, days: int = 14, limit: int = 10) -> list:
-    """List recent activities for a coached athlete in descending date order.
-
-    Args:
-        athlete_id: The athlete's ID (e.g. 'i12345'). Get IDs from list_coached_athletes.
-        days: How many days back to look (default 14).
-        limit: Maximum number of activities to return (default 10).
-    """
-    oldest = (date.today() - timedelta(days=days)).isoformat()
-    return await _get(f"/athlete/{athlete_id}/activities", oldest=oldest, limit=limit)
+    resp = await client.get("/athlete/0/athlete-summary")
+    return resp.json()
 
 
 @mcp.tool()
@@ -204,12 +167,15 @@ async def list_athlete_events(
     """
     oldest = (date.today() - timedelta(days=days_back)).isoformat()
     newest = (date.today() + timedelta(days=days_ahead)).isoformat()
-    return await _get(
+    data = await client.get(
         f"/athlete/{athlete_id}/events",
-        oldest=oldest,
-        newest=newest,
-        category=category,
+        params=httpx.QueryParams(
+            oldest=oldest,
+            newest=newest,
+            category=category,
+        ),
     )
+    return data.json()
 
 
 @mcp.tool()
@@ -246,21 +212,28 @@ async def update_athlete_event(
         "distance_target": distance_target,
         "hide_from_athlete": hide_from_athlete,
     }
-    return await _put(
+    resp = await client.put(
         f"/athlete/{athlete_id}/events/{event_id}",
-        {k: v for k, v in body.items() if v is not None},
+        json={k: v for k, v in body.items() if v is not None},
     )
+    resp.raise_for_status()
+    return {
+        "message": f"Event {event_id} updated successfully.",
+        "status": resp.status_code,
+    }
 
 
 @mcp.tool()
-async def delete_event(event_id: int, athlete_id: str = "0") -> None:
+async def delete_event(event_id: int, athlete_id: str = "0") -> dict:
     """Delete an event (planned workout, note, race etc.) from an athlete's calendar.
 
     Args:
         event_id: The event ID to delete.
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
     """
-    await _delete(f"/athlete/{athlete_id}/events/{event_id}")
+    resp = await client.delete(f"/athlete/{athlete_id}/events/{event_id}")
+    resp.raise_for_status()
+    return {"message": f"Event {event_id} deleted.", "status": resp.status_code}
 
 
 @mcp.tool()
@@ -288,10 +261,9 @@ async def create_note(
     }
     if end_date:
         body["end_date_local"] = f"{end_date}T00:00:00"
-    return await _post(f"/athlete/{athlete_id}/events", body)
-
-
-CoachTick = Literal[1, 2, 3, 4, 5]
+    resp = await client.post(f"/athlete/{athlete_id}/events", json=body)
+    resp.raise_for_status()
+    return {"message": f"Note '{name}' created.", "status": resp.status_code}
 
 
 @mcp.tool()
@@ -302,7 +274,12 @@ async def set_coach_evaluation(activity_id: str, evaluation: CoachTick) -> dict:
         activity_id: The activity ID (e.g. 'i129230824').
         evaluation: 1 = WTF, 2 = POOR, 3 = SEEN, 4 = GOOD, 5 = AMAZING.
     """
-    return await _put(f"/activity/{activity_id}", {"coach_tick": evaluation})
+    resp = await client.put(f"/activity/{activity_id}", json={"coach_tick": evaluation})
+    resp.raise_for_status()
+    return {
+        "message": f"Coach evaluation for activity {activity_id} set to {evaluation.name}.",
+        "status": resp.status_code,
+    }
 
 
 @mcp.tool()
@@ -313,7 +290,14 @@ async def post_activity_message(activity_id: str, content: str) -> dict:
         activity_id: The activity ID (e.g. 'i129230824').
         content: The message text to post.
     """
-    return await _post(f"/activity/{activity_id}/messages", {"content": content})
+    resp = await client.post(
+        f"/activity/{activity_id}/messages", json={"content": content}
+    )
+    resp.raise_for_status()
+    return {
+        "message": f"Message posted to activity {activity_id}.",
+        "status": resp.status_code,
+    }
 
 
 if __name__ == "__main__":
