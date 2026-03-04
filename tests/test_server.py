@@ -49,10 +49,14 @@ async def test_list_activities():
 async def test_get_wellness():
     result = await get_wellness(days=7)
     assert isinstance(result, list)
-    if result:
-        assert "id" in result[0]  # date string e.g. "2026-02-24"
-        assert "ctl" in result[0]
-        assert "atl" in result[0]
+    assert len(result) == 7
+    day = result[0]
+    assert len(day) == 3  # id, load, health
+    assert len(day["load"]) == 3  # ctl, atl, rampRate
+    assert len(day["health"]) == 4  # hrv, restingHR, sleepScore, sleeptSecs
+    assert "id" in day
+    assert "ctl" in day["load"]
+    assert "atl" in day["load"]
 
 
 async def test_list_gear():

@@ -1,9 +1,10 @@
 """Intervals.icu MCP server — exposes training data as MCP tools."""
 
+from dataclasses import asdict, dataclass
 import enum
 import os
 from datetime import date, timedelta
-from typing import Literal
+from typing import Literal, Optional, Self
 
 import httpx
 from dotenv import load_dotenv
@@ -21,6 +22,43 @@ class CoachTick(enum.IntEnum):
     SEEN = enum.auto()
     GOOD = enum.auto()
     AMAZING = enum.auto()
+
+
+@dataclass
+class TrainingLoad:
+    ctl: float
+    atl: float
+    rampRate: float
+
+
+@dataclass
+class HealthMetrics:
+    hrv: Optional[float]
+    restingHR: Optional[float]
+    sleepScore: Optional[float]
+    sleepSecs: Optional[float]
+
+
+@dataclass
+class DailyWellness:
+    id: str
+    load: TrainingLoad
+    health: HealthMetrics
+
+    @classmethod
+    def from_json(cls, data: dict) -> Self:
+        return cls(
+            id=data["id"],
+            load=TrainingLoad(
+                ctl=data["ctl"], atl=data["atl"], rampRate=data["rampRate"]
+            ),
+            health=HealthMetrics(
+                hrv=data["hrv"],
+                restingHR=data["restingHR"],
+                sleepScore=data["sleepScore"],
+                sleepSecs=data["sleepSecs"],
+            ),
+        )
 
 
 mcp = FastMCP("intervals-icu")
@@ -69,11 +107,11 @@ async def get_wellness(days: int = 7, athlete_id: str = "0") -> list:
         days: How many days of history to return (default 7).
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
     """
-    oldest = (date.today() - timedelta(days=days)).isoformat()
+    oldest = (date.today() - timedelta(days=days - 1)).isoformat()
     data = await client.get(
         f"/athlete/{athlete_id}/wellness", params=httpx.QueryParams(oldest=oldest)
     )
-    return data.json()
+    return [asdict(DailyWellness.from_json(day)) for day in data.json()]
 
 
 @mcp.tool()
