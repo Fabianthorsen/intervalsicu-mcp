@@ -149,6 +149,39 @@ Pushing to `main` triggers automatic deployment. Add your Fly.io token as a repo
 | `set_coach_evaluation` | Set evaluation tick: 1=WTF 2=POOR 3=SEEN 4=GOOD 5=AMAZING |
 | `post_activity_message` | Post a feedback comment on an activity |
 
+## Tips & Example Workflows
+
+### Review a workout
+
+Paste this prompt into your Claude Project Instructions (or use it directly) to get a structured workout review with an evaluation tick and coaching message:
+
+```
+Analyse a workout and post feedback. Follow these steps in order:
+
+1. **Identify the activity** — if I say "latest", call list_activities_between_dates with oldest=14 days ago and newest=today, then pick the most recent. Otherwise use the activity ID I provide.
+
+2. **Fetch the activity** — call get_activity and get_activity_intervals in parallel to get summary stats (TSS, distance, duration, avg HR/power) and interval breakdown (targets vs actuals, power zones, HR drift).
+
+3. **Check existing messages** — inspect any existing comments to avoid duplicating feedback.
+
+4. **Assess the workout** — did the athlete hit targets? Were intervals consistent? Call get_wellness with days=7 if load context (CTL/ATL/TSB) would help.
+
+5. **Choose an evaluation tick** — call set_coach_evaluation:
+   - 1 = WTF, 2 = POOR, 3 = SEEN, 4 = GOOD, 5 = AMAZING
+
+6. **Post a feedback message** — call post_activity_message with 2–4 sentences: what went well, one concrete observation or suggestion. Direct, encouraging, specific — not generic praise.
+
+7. **Summarise** — report back the activity ID, tick given, and message posted.
+```
+
+**Usage examples:**
+- *"Review latest workout"*
+- *"Review workout i129230824"*
+
+### Claude Code slash command
+
+If you use Claude Code (CLI), save the prompt above as `~/.claude/commands/review-workout.md` for a `/review-workout latest` slash command available in every project.
+
 ## Running Tests
 
 ```bash
