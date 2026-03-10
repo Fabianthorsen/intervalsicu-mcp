@@ -8,6 +8,9 @@ import httpx
 
 from dotenv import load_dotenv
 from fastmcp import Context, FastMCP
+from fastmcp.server.auth.providers.github import GitHubProvider
+from fastmcp.server.auth import AuthContext
+from fastmcp.server.middleware import AuthMiddleware
 from fastmcp.server.lifespan import lifespan
 
 from activities import activities
@@ -19,6 +22,10 @@ from wellness import wellness
 load_dotenv()
 
 API_KEY = os.environ["INTERVALS_API_KEY"]
+GITHUB_CLIENT_ID = os.environ["GITHUB_CLIENT_ID"]
+GITHUB_CLIENT_SECRET = os.environ["GITHUB_CLIENT_SECRET"]
+JWT_SIGNING_KEY = os.environ["JWT_SIGNING_KEY"]
+ALLOWED_GITHUB_USERS = {u.lower() for u in os.environ.get("ALLOWED_GITHUB_USERS", "").split(",") if u}
 BASE_URL = "https://intervals.icu/api/v1"
 
 
@@ -30,9 +37,17 @@ async def client_lifespan(_: FastMCP) -> AsyncIterator[dict]:
         yield {"client": client}
 
 
+auth = GitHubProvider(
+    client_id=GITHUB_CLIENT_ID,
+    client_secret=GITHUB_CLIENT_SECRET,
+    base_url="https://intervalsicu-mcp.fly.dev",
+    jwt_signing_key=JWT_SIGNING_KEY,
+)
+
 mcp = FastMCP(
     "intervals-icu",
     lifespan=client_lifespan,
+    auth=auth,
     instructions="""
     You have access to the Intervals.icu training platform for endurance athletes.
 
@@ -66,11 +81,20 @@ mcp = FastMCP(
     """,
 )
 
+def check_github_user(ctx: AuthContext) -> bool:
+    if ctx.token is None:
+        return False
+    return ctx.token.claims.get("login", "").lower() in ALLOWED_GITHUB_USERS
+
+
+mcp.add_middleware(AuthMiddleware(auth=check_github_user))
+
 mcp.mount(athletes)
 mcp.mount(activities)
 mcp.mount(coaching)
 mcp.mount(wellness)
 mcp.mount(library)
+
 
 
 
@@ -230,4 +254,7 @@ async def create_note(
 
 
 if __name__ == "__main__":
-    mcp.run()
+    import os
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    port = int(os.environ.get("PORT", "8000"))
+    mcp.run(transport=transport, host="0.0.0.0", port=port)

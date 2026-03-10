@@ -1,14 +1,7 @@
 {
   "mcpServers": {
     "intervals-icu": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/Users/fabian.thorsen/intervalsicu-mcp",
-        "run",
-        "python",
-        "src/server.py"
-      ]
+      "url": "https://intervalsicu-mcp.fly.dev/mcp"
     }
   }
 }
