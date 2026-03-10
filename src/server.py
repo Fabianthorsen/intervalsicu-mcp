@@ -79,6 +79,65 @@ mcp = FastMCP(
     - To schedule a library workout: use list_workout_folders to find the workout id (in
       children), then call schedule_workout
 
+    ## Creating workouts
+
+    Always populate the `description` field when creating or scheduling a workout.
+
+    ### Cycling (type='Ride') and Running (type='Run')
+    The description must contain two parts:
+
+    1. **Prose intro** (2-4 sentences): purpose, feel, and key coaching focus for the session.
+    2. **Structured spec** using Intervals.icu text format immediately after:
+       - Section headers (no dash) label blocks: `Warmup`, `Main set Nx`, `Cooldown`
+       - Each step starts with `- `, followed by duration then intensity target
+       - Duration: `30s`, `10m`, `1m30`
+       - **Ride intensity** — use zones (`Z2`, `Z3`, `Z4`) for steady-state work; use
+         `%FTP` ranges (e.g. `90-95%`) when precision or flexibility matters (e.g. non-ERG,
+         hard intervals). Add cadence where relevant: `85-95rpm`
+       - **Run intensity** — use HR zones (`Z2 HR`, `Z3 HR`) for steady-state work; use
+         `%LTHR` ranges (e.g. `95-100% LTHR`) when precision matters
+       - Repeats: put the multiplier on the section header, e.g. `Main set 5x`
+
+    Example Ride description:
+    ```
+    Threshold work to build sustained power. Keep cadence high throughout the intervals
+    and focus on smooth pedalling. If riding outdoors, use the ranges to accommodate terrain.
+
+    Warmup
+    - 15m Z2 85-95rpm
+
+    Main set 4x
+    - 8m 95-100% 88-92rpm
+    - 4m Z1 recovery
+
+    Cooldown
+    - 10m Z1
+    ```
+
+    Example Run description:
+    ```
+    Aerobic base run with strides to finish. Keep effort conversational throughout the
+    main block. The strides are short and sharp — focus on form, not speed.
+
+    Warmup
+    - 10m Z1 HR
+
+    Main set
+    - 30m Z2 HR
+
+    Strides 6x
+    - 20s 95-100% LTHR
+    - 40s Z1 HR recovery
+
+    Cooldown
+    - 5m Z1 HR
+    ```
+
+    ### All other sport types (Swim, WeightTraining, Yoga, etc.)
+    Write a well-formatted prose description covering: goal of the session, equipment
+    needed, step-by-step structure (sets, reps, distances, rest periods), and any
+    technique cues. No structured interval spec is required.
+
     ## Reviewing a workout (coached athletes)
     To analyse a workout and post coaching feedback:
     1. Identify the activity — use list_activities_between_dates (last 14 days) to find the
