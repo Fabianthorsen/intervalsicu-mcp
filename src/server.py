@@ -78,6 +78,21 @@ mcp = FastMCP(
       workouts with create_workout_in_folder
     - To schedule a library workout: use list_workout_folders to find the workout id (in
       children), then call schedule_workout
+
+    ## Reviewing a workout (coached athletes)
+    To analyse a workout and post coaching feedback:
+    1. Identify the activity — use list_activities_between_dates (last 14 days) to find the
+       latest, or use a specific activity ID.
+    2. Fetch in parallel: get_activity (summary stats: TSS, load, HR, power) and
+       get_activity_intervals (interval breakdown, targets vs actuals, power zones).
+    3. Check existing messages with get_activity_messages — if the athlete has left a
+       comment, read it and factor it into your feedback (e.g. they felt tired, had an
+       issue, or are happy with the effort). Avoid duplicating existing coach feedback.
+    4. Assess: did the athlete hit targets? Interval consistency? Compare load to wellness
+       (get_wellness with days=7 if needed). Flag high HR, dropped power, missed intervals.
+    5. Set a tick with set_coach_evaluation: 1=WTF, 2=POOR, 3=SEEN, 4=GOOD, 5=AMAZING.
+    6. Post feedback with post_activity_message: 2–4 sentences, direct and specific,
+       mention what went well and one concrete observation or suggestion.
     """,
 )
 
