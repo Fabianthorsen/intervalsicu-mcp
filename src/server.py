@@ -292,6 +292,53 @@ async def delete_event(ctx: Context, event_id: int, athlete_id: str = "0") -> di
 
 
 @mcp.tool(tags={"Calendar"})
+async def update_athlete_event(
+    ctx: Context,
+    event_id: int,
+    athlete_id: str = "0",
+    name: str | None = None,
+    date: str | None = None,
+    description: str | None = None,
+    indoor: bool | None = None,
+    hide_from_athlete: bool | None = None,
+    moving_time: int | None = None,
+    color: str | None = None,
+) -> dict:
+    """Update an existing event on an athlete's calendar (planned workout, note, race etc.).
+
+    Only the fields you provide will be updated — all others are left unchanged.
+
+    Args:
+        event_id: The event ID to update.
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+        name: New name for the event.
+        date: New date in ISO-8601 format (e.g. '2026-03-10').
+        description: New description / workout steps.
+        indoor: Whether the workout is indoors.
+        hide_from_athlete: If True, the event is hidden from the athlete's view.
+        moving_time: Target duration in seconds.
+        color: Hex color string (e.g. '#FF5733').
+    """
+    optional = {
+        "name": name,
+        "description": description,
+        "indoor": indoor,
+        "hide_from_athlete": hide_from_athlete,
+        "moving_time": moving_time,
+        "color": color,
+    }
+    body: dict = {k: v for k, v in optional.items() if v is not None}
+    if date is not None:
+        body["start_date_local"] = f"{date}T00:00:00"
+
+    resp = await ctx.lifespan_context["client"].put(
+        f"/athlete/{athlete_id}/events/{event_id}", json=body
+    )
+    resp.raise_for_status()
+    return {"message": f"Event {event_id} updated.", "status": resp.status_code}
+
+
+@mcp.tool(tags={"Calendar"})
 async def create_note(
     ctx: Context,
     date: str,

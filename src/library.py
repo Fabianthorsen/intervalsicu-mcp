@@ -102,6 +102,67 @@ async def create_workout_in_folder(
     return {"message": f"Workout '{name}' created successfully.", "status": r.status_code}
 
 
+@library.tool(tags={"Workouts"})
+async def update_workout(
+    ctx: Context,
+    workout_id: int,
+    athlete_id: str = "0",
+    name: str | None = None,
+    description: str | None = None,
+    type: str | None = None,
+    indoor: bool | None = None,
+    moving_time: int | None = None,
+    target: str | None = None,
+    sub_type: str | None = None,
+    color: str | None = None,
+    tags: list[str] | None = None,
+    hide_from_athlete: bool | None = None,
+    carbs_per_hour: int | None = None,
+    distance: float | None = None,
+) -> dict:
+    """Update an existing workout in the athlete's workout library.
+
+    Only the fields you provide will be updated — all others are left unchanged.
+
+    Args:
+        workout_id: The workout ID to update. Get IDs from list_workout_folders.
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+        name: New workout name.
+        description: Workout steps in Intervals.icu native text format, or plain coaching notes.
+        type: Sport type (e.g. 'Ride', 'Run', 'Swim').
+        indoor: Whether the workout is indoors.
+        moving_time: Target duration in seconds.
+        target: Primary target metric — AUTO, POWER, HR, or PACE.
+        sub_type: Workout sub-type — NONE, COMMUTE, WARMUP, COOLDOWN, or RACE.
+        color: Hex color string for the workout (e.g. '#FF5733').
+        tags: List of tags to attach to the workout.
+        hide_from_athlete: If True, the workout is hidden from the athlete's view.
+        carbs_per_hour: Target carbohydrate intake in grams per hour.
+        distance: Target distance in metres.
+    """
+    body: dict = {}
+    optional = {
+        "name": name,
+        "description": description,
+        "type": type,
+        "indoor": indoor,
+        "moving_time": moving_time,
+        "target": target,
+        "sub_type": sub_type,
+        "color": color,
+        "tags": tags,
+        "hide_from_athlete": hide_from_athlete,
+        "carbs_per_hour": carbs_per_hour,
+        "distance": distance,
+    }
+    body.update({k: v for k, v in optional.items() if v is not None})
+    r = await ctx.lifespan_context["client"].put(
+        f"/athlete/{athlete_id}/workouts/{workout_id}", json=body
+    )
+    r.raise_for_status()
+    return {"message": f"Workout {workout_id} updated.", "status": r.status_code}
+
+
 @library.tool(tags={"Workouts"}, annotations={"destructiveHint": True})
 async def delete_workout(
     ctx: Context, workout_id: str, athlete_id: str = "0"
