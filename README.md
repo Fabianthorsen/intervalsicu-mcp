@@ -8,21 +8,22 @@ An [MCP](https://modelcontextprotocol.io) server that exposes [intervals.icu](ht
 - [uv](https://docs.astral.sh/uv/)
 - An intervals.icu account with an API key
 
-## Setup
+## Local setup (stdio)
 
 1. Clone the repo and install dependencies:
    ```bash
+   git clone https://github.com/your-username/intervalsicu-mcp
+   cd intervalsicu-mcp
    uv sync
    ```
 
 2. Create a `.env` file in the project root:
    ```
    INTERVALS_API_KEY=your_api_key_here
-   INTERVALS_ATHLETE_ID=i123456
    ```
    Your API key is found in intervals.icu under **Settings → API**.
 
-## Claude Desktop
+### Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
@@ -41,6 +42,68 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```
 
 Restart Claude Desktop after saving.
+
+### Claude Code
+
+```bash
+claude mcp add intervals-icu -- uv --directory /path/to/intervalsicu-mcp run python src/server.py
+```
+
+## Remote deployment (Fly.io + GitHub OAuth)
+
+The server supports a remote HTTP deployment with GitHub OAuth so you can restrict access to specific GitHub users.
+
+### 1. Create a GitHub OAuth App
+
+Go to GitHub → Settings → Developer settings → OAuth Apps → New OAuth App:
+- **Homepage URL:** `https://your-app-name.fly.dev`
+- **Authorization callback URL:** `https://your-app-name.fly.dev/auth/github/callback`
+
+### 2. Generate a JWT signing key
+
+```bash
+openssl rand -hex 32
+```
+
+### 3. Create the Fly.io app
+
+```bash
+brew install flyctl   # or see https://fly.io/docs/hands-on/install-flyctl/
+fly auth login
+fly apps create your-app-name
+```
+
+Update the `app` field in `fly.toml` if you changed the name.
+
+### 4. Set secrets
+
+```bash
+fly secrets set \
+  INTERVALS_API_KEY=your_intervals_api_key \
+  GITHUB_CLIENT_ID=your_github_client_id \
+  GITHUB_CLIENT_SECRET=your_github_client_secret \
+  JWT_SIGNING_KEY=your_generated_key \
+  ALLOWED_GITHUB_USERS=yourgithubusername,otherusername
+```
+
+`ALLOWED_GITHUB_USERS` is a comma-separated list of GitHub usernames that are allowed to connect.
+
+### 5. Deploy
+
+```bash
+fly deploy
+```
+
+### 6. Connect to the remote server
+
+Use `https://your-app-name.fly.dev` as the MCP server URL in your client.
+
+### Automated deployment via GitHub Actions
+
+Pushing to `main` triggers automatic deployment. Add your Fly.io token as a repository secret:
+
+- Secret name: `FLY_API_TOKEN`
+- Get the token: `fly tokens create deploy`
 
 ## Tools
 
