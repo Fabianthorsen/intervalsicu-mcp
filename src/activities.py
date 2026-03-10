@@ -52,3 +52,19 @@ async def get_activity_intervals(ctx: Context, activity_id: str) -> dict:
         f"/activity/{activity_id}/intervals"
     )
     return resp.json()
+
+
+@activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
+async def get_activity_messages(ctx: Context, activity_id: str) -> list:
+    """Get all messages/comments posted on an activity (athlete and coach feedback).
+
+    Args:
+        activity_id: The activity ID (e.g. 'i129230824').
+    """
+    resp = await ctx.lifespan_context["client"].get(
+        f"/activity/{activity_id}/messages"
+    )
+    if resp.status_code == 404:
+        return []
+    resp.raise_for_status()
+    return resp.json() or []
