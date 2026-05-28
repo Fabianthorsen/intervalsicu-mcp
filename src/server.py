@@ -3,6 +3,7 @@
 import os
 from typing import AsyncIterator
 
+import httpx
 from dotenv import load_dotenv
 from fastmcp import Context, FastMCP
 from fastmcp.server.auth.providers.github import GitHubProvider
@@ -27,10 +28,18 @@ ALLOWED_GITHUB_USERS = {u.lower() for u in os.environ.get("ALLOWED_GITHUB_USERS"
 BASE_URL = "https://intervals.icu/api/v1"
 
 
+def _error_hook(response: httpx.Response) -> None:
+    """Raise HTTPStatusError on all 4xx/5xx responses."""
+    if response.status_code >= 400:
+        response.raise_for_status()
+
+
 @lifespan
 async def client_lifespan(_: FastMCP) -> AsyncIterator[dict]:
     async with httpx.AsyncClient(
-        base_url=BASE_URL, auth=("API_KEY", API_KEY)
+        base_url=BASE_URL,
+        auth=("API_KEY", API_KEY),
+        event_hooks={"response": [_error_hook]},
     ) as client:
         yield {"client": client}
 

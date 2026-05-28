@@ -11,7 +11,6 @@ async def list_workout_folders(ctx: Context, athlete_id: str = "0") -> list:
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
     """
     r = await ctx.lifespan_context["client"].get(f"/athlete/{athlete_id}/folders")
-    r.raise_for_status()
     return r.json()
 
 
@@ -31,7 +30,6 @@ async def create_workout_folder(
     r = await ctx.lifespan_context["client"].post(
         f"/athlete/{athlete_id}/folders", json=body
     )
-    r.raise_for_status()
     return {"message": f"Folder '{folder_name}' created.", "status": r.status_code}
 
 
@@ -98,7 +96,6 @@ async def create_workout_in_folder(
     r = await ctx.lifespan_context["client"].post(
         f"/athlete/{athlete_id}/workouts", json=body
     )
-    r.raise_for_status()
     return {"message": f"Workout '{name}' created successfully.", "status": r.status_code}
 
 
@@ -159,13 +156,12 @@ async def update_workout(
     r = await ctx.lifespan_context["client"].put(
         f"/athlete/{athlete_id}/workouts/{workout_id}", json=body
     )
-    r.raise_for_status()
     return {"message": f"Workout {workout_id} updated.", "status": r.status_code}
 
 
 @library.tool(tags={"Workouts"}, annotations={"destructiveHint": True})
 async def delete_workout(
-    ctx: Context, workout_id: str, athlete_id: str = "0"
+    ctx: Context, workout_id: int, athlete_id: str = "0"
 ) -> dict:
     """Delete a workout from the athlete's workout library.
 
@@ -176,5 +172,4 @@ async def delete_workout(
     r = await ctx.lifespan_context["client"].delete(
         f"/athlete/{athlete_id}/workouts/{workout_id}"
     )
-    r.raise_for_status()
     return {"message": f"Workout {workout_id} deleted.", "status": r.status_code}

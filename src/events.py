@@ -83,7 +83,6 @@ async def schedule_workout(
     client = ctx.lifespan_context["client"]
 
     workout_resp = await client.get(f"/athlete/{library_athlete_id}/workouts/{workout_id}")
-    workout_resp.raise_for_status()
     workout = workout_resp.json()
 
     copy_fields = ("description", "workout_doc", "type", "moving_time", "target",
@@ -103,7 +102,6 @@ async def schedule_workout(
         params={"upsertOnUid": False},
         json=body,
     )
-    resp.raise_for_status()
     return {"message": f"Workout '{body['name']}' scheduled on {date}.", "status": resp.status_code}
 
 
@@ -118,7 +116,6 @@ async def delete_event(ctx: Context, event_id: int, athlete_id: str = "0") -> di
     resp = await ctx.lifespan_context["client"].delete(
         f"/athlete/{athlete_id}/events/{event_id}"
     )
-    resp.raise_for_status()
     return {"message": f"Event {event_id} deleted.", "status": resp.status_code}
 
 
@@ -177,7 +174,6 @@ async def update_event(
     resp = await ctx.lifespan_context["client"].put(
         f"/athlete/{athlete_id}/events/{event_id}", json=body
     )
-    resp.raise_for_status()
     return {"message": f"Event {event_id} updated.", "status": resp.status_code}
 
 
@@ -212,7 +208,6 @@ async def create_note(
         params={"upsertOnUid": False},
         json=body,
     )
-    resp.raise_for_status()
     return {"message": f"Note '{name}' created.", "status": resp.status_code}
 
 
@@ -267,5 +262,4 @@ async def create_workout(
         params={"upsertOnUid": False},
         json=body,
     )
-    resp.raise_for_status()
     return {"message": f"Workout '{name}' created on {date} for athlete {athlete_id}.", "status": resp.status_code}
