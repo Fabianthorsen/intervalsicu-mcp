@@ -5,7 +5,7 @@ from fastmcp import Context, FastMCP
 
 wellness = FastMCP("wellness")
 
-KEYS = ("id", "ctl", "atl", "rampRate", "hrv", "restingHR", "sleepScore", "sleepSecs")
+KEYS = ("id", "ctl", "atl", "rampRate", "hrv", "restingHR", "sleepScore", "sleepSecs", "weight")
 
 
 @wellness.tool(tags={"Wellness"}, annotations={"readOnlyHint": True})
