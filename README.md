@@ -107,47 +107,52 @@ Pushing to `main` triggers automatic deployment. Add your Fly.io token as a repo
 
 ## Tools
 
-### Athlete
+### Athletes
 | Tool | Description |
 |------|-------------|
-| `get_athlete` | Profile, FTP, resting HR, weight, gear |
+| `get_athlete` | Profile, FTP, resting HR, weight, timezone, gear |
+| `list_coached_athletes` | Athletes you coach with recent training summaries |
 
 ### Activities
 | Tool | Description |
 |------|-------------|
-| `list_activities` | Recent activities in descending date order |
-| `get_activity_intervals` | Analysed intervals with power, HR, pace, TSS |
-| `get_activity_streams` | Raw time-series data (power, HR, speed, cadence) |
+| `list_activities_between_dates` | Recent activities in date range, descending order (default: last 14 days) |
+| `get_activity` | Full details for a single activity (power, HR, TSS, pace, elevation, load) |
+| `get_activity_intervals` | Analysed intervals per activity with power, HR, pace, TSS, targets vs actuals |
+| `get_activity_messages` | Comments/feedback on an activity (athlete and coach) |
+| `set_coach_evaluation` | Set evaluation tick on activity: 1=WTF 2=POOR 3=SEEN 4=GOOD 5=AMAZING |
+| `post_activity_message` | Post coaching feedback comment on activity |
 
-### Wellness & Fitness
+### Wellness
 | Tool | Description |
 |------|-------------|
-| `get_wellness` | Daily CTL, ATL, TSB, HRV, sleep, resting HR, weight |
+| `get_wellness` | Daily records: CTL, ATL, TSB, HRV, resting HR, sleep duration/score, weight |
 
 ### Gear
 | Tool | Description |
 |------|-------------|
-| `list_gear` | Bikes, shoes and components with usage and maintenance reminders |
+| `list_gear` | Bikes, shoes, components with total usage, activity count, maintenance reminders |
 
-### Calendar & Planning
+### Calendar & Events
 | Tool | Description |
 |------|-------------|
-| `list_events` | Planned workouts, notes and races on the calendar |
+| `list_events` | Planned events (workouts, notes, races) on calendar by date range (default: 7 days ahead) |
 | `get_event` | Single event by ID |
-| `create_note` | Add a note to the calendar (rest day, travel, illness, race trip) |
-| `delete_event` | Remove an event from the calendar |
+| `create_note` | Add a note to calendar (rest day, travel, illness, race trip, etc.) |
+| `create_workout` | Create inline workout event directly on calendar |
+| `schedule_workout` | Schedule a workout from the library onto calendar |
+| `update_event` | Update event (name, date, description, type, targets, visibility, etc.) |
+| `delete_event` | Remove event from calendar |
 | `get_training_plan` | Current training plan |
-| `list_workouts` | Workout library |
 
-### Coaching
+### Workout Library
 | Tool | Description |
 |------|-------------|
-| `list_coached_athletes` | Athletes you coach with recent training summaries |
-| `list_athlete_events` | Planned events on a coached athlete's calendar |
-| `list_athlete_activities` | Recent activities for a coached athlete |
-| `update_athlete_event` | Update a planned event on a coached athlete's calendar |
-| `set_coach_evaluation` | Set evaluation tick: 1=WTF 2=POOR 3=SEEN 4=GOOD 5=AMAZING |
-| `post_activity_message` | Post a feedback comment on an activity |
+| `list_workout_folders` | Folders in the workout library (nested structure with workouts as children) |
+| `create_workout_folder` | Create a new folder in the workout library |
+| `create_workout_in_folder` | Create a workout inside a folder (text format or file upload: .zwo/.mrc/.erg) |
+| `update_workout` | Update a library workout (name, description, targets, duration, type, etc.) |
+| `delete_workout` | Delete a workout from the library |
 
 ## Tips & Example Workflows
 
@@ -162,7 +167,7 @@ Analyse a workout and post feedback. Follow these steps in order:
 
 2. **Fetch the activity** — call get_activity and get_activity_intervals in parallel to get summary stats (TSS, distance, duration, avg HR/power) and interval breakdown (targets vs actuals, power zones, HR drift).
 
-3. **Check existing messages** — inspect any existing comments to avoid duplicating feedback.
+3. **Check existing messages** — call get_activity_messages to inspect any existing comments and avoid duplicating feedback.
 
 4. **Assess the workout** — did the athlete hit targets? Were intervals consistent? Call get_wellness with days=7 if load context (CTL/ATL/TSB) would help.
 

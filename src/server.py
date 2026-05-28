@@ -66,19 +66,18 @@ mcp = FastMCP(
     - Distances are in metres, durations in seconds.
 
     ## Tool groups
-    - **Athletes** — profile data (FTP, weight, HR zones, timezone)
-    - **Activities** — completed workouts with intervals, power, HR, pace and TSS
+    - **Athletes** — profile data (FTP, weight, HR zones, timezone), list coaches and coached athletes
+    - **Activities** — completed workouts with intervals, power, HR, pace and TSS; includes coaching tools
+      (set evaluation ticks, post feedback) for coaches reviewing athlete workouts
     - **Wellness** — daily HRV, resting HR, sleep, CTL/ATL/TSB (fitness/fatigue/form)
     - **Gear** — bikes, shoes, components and maintenance reminders
-    - **Calendar** — planned events (workouts, notes, races) on the athlete's calendar
-    - **Training** — active training plan
-    - **Coaching** — tools for coaches: view and manage athlete calendars, post feedback,
-      set evaluation ticks on activities (WTF/POOR/SEEN/GOOD/AMAZING)
-    - **Workouts** — workout library: folders and structured workout definitions.
-      list_workout_folders returns folders with workouts nested inside as 'children'.
+    - **Calendar & Events** — planned workouts, notes, races, and rest days; create inline workouts or
+      schedule from the library; get training plan
+    - **Workout Library** — folders and structured workout definitions. list_workout_folders returns folders
+      with workouts nested inside as 'children'.
 
     ## Common workflows
-    - To review an athlete's week: use list_athlete_events + list_activities_between_dates
+    - To review an athlete's week: use list_events + list_activities_between_dates
     - To check readiness: use get_wellness with days=1 for today, days=7 or days=30 for trends
     - To give feedback: use set_coach_evaluation and/or post_activity_message
     - To build a workout library: create folders with create_workout_folder, then add
