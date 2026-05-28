@@ -1,9 +1,18 @@
+import enum
 from datetime import date
 
 import httpx
 from fastmcp import Context, FastMCP
 
 activities = FastMCP("activities")
+
+
+class CoachTick(enum.IntEnum):
+    WTF = enum.auto()
+    POOR = enum.auto()
+    SEEN = enum.auto()
+    GOOD = enum.auto()
+    AMAZING = enum.auto()
 
 
 @activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
@@ -68,3 +77,38 @@ async def get_activity_messages(ctx: Context, activity_id: str) -> list:
         return []
     resp.raise_for_status()
     return resp.json() or []
+
+
+@activities.tool(tags={"Coaching"})
+async def set_coach_evaluation(
+    ctx: Context, activity_id: str, evaluation: CoachTick
+) -> dict:
+    """Set the coach's evaluation tick on an athlete's activity.
+
+    Args:
+        activity_id: The activity ID (e.g. 'i129230824').
+        evaluation: 1 = WTF, 2 = POOR, 3 = SEEN, 4 = GOOD, 5 = AMAZING.
+    """
+    resp = await ctx.lifespan_context["client"].put(
+        f"/activity/{activity_id}", json={"coach_tick": evaluation}
+    )
+    resp.raise_for_status()
+    return {
+        "message": f"Coach evaluation for activity {activity_id} set to {evaluation.name}.",
+        "status": resp.status_code,
+    }
+
+
+@activities.tool(tags={"Coaching"})
+async def post_activity_message(ctx: Context, activity_id: str, content: str) -> dict:
+    """Post a coaching message or feedback comment on an athlete's activity.
+
+    Args:
+        activity_id: The activity ID (e.g. 'i129230824').
+        content: The message text to post.
+    """
+    resp = await ctx.lifespan_context["client"].post(
+        f"/activity/{activity_id}/messages", json={"content": content}
+    )
+    resp.raise_for_status()
+    return {"message": f"Message posted to activity {activity_id}.", "status": resp.status_code}
