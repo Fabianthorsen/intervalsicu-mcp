@@ -27,6 +27,9 @@ JWT_SIGNING_KEY = os.environ["JWT_SIGNING_KEY"]
 ALLOWED_GITHUB_USERS = {u.lower() for u in os.environ.get("ALLOWED_GITHUB_USERS", "").split(",") if u}
 BASE_URL = "https://intervals.icu/api/v1"
 
+# Global client (initialized in lifespan, used by tools)
+_global_client: httpx.AsyncClient | None = None
+
 
 def _error_hook(response: httpx.Response) -> None:
     """Raise HTTPStatusError on all 4xx/5xx responses."""
@@ -34,14 +37,35 @@ def _error_hook(response: httpx.Response) -> None:
         response.raise_for_status()
 
 
+async def _get_client(ctx: Context) -> httpx.AsyncClient:
+    """Get the HTTP client, from lifespan context (stdio) or global (HTTP)."""
+    try:
+        return ctx.lifespan_context["client"]
+    except (KeyError, AttributeError):
+        # Fallback for HTTP transport where lifespan context isn't available
+        global _global_client
+        if _global_client is None:
+            _global_client = httpx.AsyncClient(
+                base_url=BASE_URL,
+                auth=("API_KEY", API_KEY),
+                event_hooks={"response": [_error_hook]},
+            )
+        return _global_client
+
+
 @lifespan
 async def client_lifespan(_: FastMCP) -> AsyncIterator[dict]:
-    async with httpx.AsyncClient(
+    global _global_client
+    _global_client = httpx.AsyncClient(
         base_url=BASE_URL,
         auth=("API_KEY", API_KEY),
         event_hooks={"response": [_error_hook]},
-    ) as client:
-        yield {"client": client}
+    )
+    try:
+        yield {"client": _global_client}
+    finally:
+        await _global_client.aclose()
+        _global_client = None
 
 
 auth = GitHubProvider(

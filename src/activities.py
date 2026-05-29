@@ -221,12 +221,22 @@ async def list_activities_between_dates(
     if to_date is None:
         to_date = date.today()
 
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
     try:
-        client = ctx.lifespan_context["client"]
-    except KeyError as e:
-        import sys
-        print(f"ERROR: lifespan_context missing 'client'. Keys available: {list(ctx.lifespan_context.keys())}", file=sys.stderr)
-        raise
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
 
     data = await client.get(
         f"/athlete/{athlete_id}/activities",
@@ -259,12 +269,22 @@ async def get_activity(
         for g in include
     ]
 
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
     try:
-        client = ctx.lifespan_context["client"]
-    except KeyError as e:
-        import sys
-        print(f"ERROR: lifespan_context missing 'client'. Keys available: {list(ctx.lifespan_context.keys())}", file=sys.stderr)
-        raise
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
 
     resp = await client.get(f"/activity/{activity_id}")
     obj = resp.json()
@@ -365,7 +385,23 @@ async def get_power_curve(
         durations: List of duration labels to include (e.g. ['5m', '20m', '60m']).
                   Omit for all 9 canonical durations.
     """
-    client = ctx.lifespan_context["client"]
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
     athlete = await client.get(f"/athlete/{athlete_id}")
     weight = athlete.json().get("weight", 70.0)
 
@@ -418,7 +454,22 @@ async def get_activity_curve(
         metric: Curve metric: 'POWER', 'HR', or 'PACE' (default 'POWER').
         durations: List of duration labels to include. Omit for all 9 canonical durations.
     """
-    client = ctx.lifespan_context["client"]
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
 
     # Get activity for weight
     activity = await client.get(f"/activity/{activity_id}")

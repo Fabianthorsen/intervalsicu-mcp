@@ -83,7 +83,24 @@ async def list_events(
 
     oldest = (date.today() - timedelta(days=days_back)).isoformat()
     newest = (date.today() + timedelta(days=days_ahead)).isoformat()
-    data = await ctx.lifespan_context["client"].get(
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    data = await client.get(
         f"/athlete/{athlete_id}/events",
         params=httpx.QueryParams(oldest=oldest, newest=newest, category=category),
     )
@@ -112,7 +129,24 @@ async def get_event(
         for g in include
     ]
 
-    resp = await ctx.lifespan_context["client"].get(
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    resp = await client.get(
         f"/athlete/{athlete_id}/events/{event_id}"
     )
     obj = resp.json()
@@ -139,7 +173,24 @@ async def get_training_plan(
         for g in include
     ]
 
-    resp = await ctx.lifespan_context["client"].get(
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    resp = await client.get(
         f"/athlete/{athlete_id}/training-plan"
     )
     obj = resp.json()
@@ -169,7 +220,24 @@ async def schedule_workout(
         indoor: Override whether the workout is indoors.
         hide_from_athlete: If True, the event is hidden from the athlete's view.
     """
-    client = ctx.lifespan_context["client"]
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    client = client
 
     workout_resp = await client.get(f"/athlete/{library_athlete_id}/workouts/{workout_id}")
     workout = workout_resp.json()
@@ -202,7 +270,24 @@ async def delete_event(ctx: Context, event_id: int, athlete_id: str = "0") -> di
         event_id: The event ID to delete.
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
     """
-    resp = await ctx.lifespan_context["client"].delete(
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    resp = await client.delete(
         f"/athlete/{athlete_id}/events/{event_id}"
     )
     return {"message": f"Event {event_id} deleted.", "status": resp.status_code}
@@ -260,7 +345,24 @@ async def update_event(
     if date is not None:
         body["start_date_local"] = f"{date}T00:00:00"
 
-    resp = await ctx.lifespan_context["client"].put(
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    resp = await client.put(
         f"/athlete/{athlete_id}/events/{event_id}", json=body
     )
     return {"message": f"Event {event_id} updated.", "status": resp.status_code}
@@ -292,7 +394,24 @@ async def create_note(
     }
     if end_date:
         body["end_date_local"] = f"{end_date}T00:00:00"
-    resp = await ctx.lifespan_context["client"].post(
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    resp = await client.post(
         f"/athlete/{athlete_id}/events",
         params={"upsertOnUid": False},
         json=body,
@@ -346,7 +465,24 @@ async def create_workout(
         "hide_from_athlete": hide_from_athlete,
     }
     body.update({k: v for k, v in optional.items() if v is not None})
-    resp = await ctx.lifespan_context["client"].post(
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    resp = await client.post(
         f"/athlete/{athlete_id}/events",
         params={"upsertOnUid": False},
         json=body,

@@ -58,7 +58,24 @@ async def list_gear(
         for g in include
     ]
 
-    resp = await ctx.lifespan_context["client"].get(f"/athlete/{athlete_id}/gear")
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    resp = await client.get(f"/athlete/{athlete_id}/gear")
     items = resp.json()
 
     return project_and_prune_list(items, include_groups, GEAR_TAXONOMY)

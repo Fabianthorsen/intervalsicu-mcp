@@ -76,7 +76,24 @@ async def get_athlete(
         for g in include
     ]
 
-    data = await ctx.lifespan_context["client"].get(f"/athlete/{athlete_id}")
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    data = await client.get(f"/athlete/{athlete_id}")
     obj = data.json()
 
     return project_and_prune(obj, include_groups, ATHLETE_TAXONOMY)
@@ -98,7 +115,24 @@ async def list_coached_athletes(ctx: Context, include: list[str] | None = None) 
         for g in include
     ]
 
-    resp = await ctx.lifespan_context["client"].get("/athlete/0/athlete-summary")
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    resp = await client.get("/athlete/0/athlete-summary")
     athletes_list = resp.json()
 
     return project_and_prune_list(athletes_list, include_groups, ATHLETE_TAXONOMY)
