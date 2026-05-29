@@ -22,3 +22,7 @@ _Avoid_: conflating the library template with the calendar Event it produces.
 
 **Note**:
 An Event with category `NOTE` — non-training calendar context such as a rest day, travel, or illness.
+
+**Best-effort curve** (power / HR / pace):
+The best value an Athlete sustained for each of a set of durations — the mean-max curve, or "power profile". Computed by intervals.icu either within one Activity or across an Athlete over a date window. It is a *summary*, distinct from the per-second **stream** it is derived from; the raw stream is never exposed (see docs/adr/0003).
+_Avoid_: "power graph"; conflating the curve with the underlying stream.
