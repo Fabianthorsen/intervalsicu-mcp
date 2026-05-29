@@ -300,7 +300,24 @@ async def get_activity_intervals(ctx: Context, activity_id: str) -> dict:
     Args:
         activity_id: The activity ID (e.g. 'i129230824').
     """
-    resp = await ctx.lifespan_context["client"].get(
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    resp = await client.get(
         f"/activity/{activity_id}/intervals"
     )
     return resp.json()
@@ -313,8 +330,25 @@ async def get_activity_messages(ctx: Context, activity_id: str) -> list:
     Args:
         activity_id: The activity ID (e.g. 'i129230824').
     """
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
     try:
-        resp = await ctx.lifespan_context["client"].get(
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    try:
+        resp = await client.get(
             f"/activity/{activity_id}/messages"
         )
         return resp.json() or []
@@ -334,7 +368,24 @@ async def set_coach_evaluation(
         activity_id: The activity ID (e.g. 'i129230824').
         evaluation: 1 = WTF, 2 = POOR, 3 = SEEN, 4 = GOOD, 5 = AMAZING.
     """
-    resp = await ctx.lifespan_context["client"].put(
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    resp = await client.put(
         f"/activity/{activity_id}", json={"coach_tick": evaluation}
     )
     return {
@@ -351,7 +402,24 @@ async def post_activity_message(ctx: Context, activity_id: str, content: str) ->
         activity_id: The activity ID (e.g. 'i129230824').
         content: The message text to post.
     """
-    resp = await ctx.lifespan_context["client"].post(
+    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    try:
+        client = ctx.lifespan_context.get("client")
+    except (AttributeError, TypeError):
+        client = None
+
+    if client is None:
+        # HTTP transport fallback: create a client
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("INTERVALS_API_KEY")
+        client = httpx.AsyncClient(
+            base_url="https://intervals.icu/api/v1",
+            auth=("API_KEY", api_key),
+        )
+
+    resp = await client.post(
         f"/activity/{activity_id}/messages", json={"content": content}
     )
     return {"message": f"Message posted to activity {activity_id}.", "status": resp.status_code}
