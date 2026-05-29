@@ -437,21 +437,21 @@ class CurveMetric(enum.Enum):
 async def get_power_curve(
     ctx: Context,
     athlete_id: str = "0",
-    metric: str = "POWER",
+    sport_type: str = "Ride",
     days: int = 90,
     durations: list[str] | None = None,
 ) -> dict:
-    """Get an athlete's best-effort power/HR/pace curve over a date window.
+    """Get an athlete's best-effort power curve over a date window.
 
     Server-computed mean-max curve (best sustained effort for each duration).
     Sampled to canonical durations (5s…60m). Never raw streams.
 
     Args:
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
-        metric: Curve metric: 'POWER', 'HR', or 'PACE' (default 'POWER').
-        days: Date window in days (default 90).
+        sport_type: Activity type to filter by (default 'Ride'). Options: Ride, Run, Swim, etc.
+        days: Date window in days (default 90). Common: 7, 30, 90, 365.
         durations: List of duration labels to include (e.g. ['5m', '20m', '60m']).
-                  Omit for all 9 canonical durations.
+                  Omit for all canonical durations.
     """
     # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
     try:
@@ -473,33 +473,26 @@ async def get_power_curve(
     athlete = await client.get(f"/athlete/{athlete_id}")
     weight = athlete.json().get("weight", 70.0)
 
-    # Map metric to API parameters
-    metric_lower = metric.lower()
-    if metric_lower == "power":
-        api_path = f"/athlete/{athlete_id}/power-curves.json"
-        api_type = "power"
-    elif metric_lower == "hr":
-        api_path = f"/athlete/{athlete_id}/hr-curves.json"
-        api_type = "hr"
-    elif metric_lower == "pace":
-        api_path = f"/athlete/{athlete_id}/pace-curves.json"
-        api_type = "pace"
-    else:
-        return {"error": f"Unknown metric: {metric}"}
+    # Query power-curves endpoint with required type and curves parameters
+    resp = await client.get(
+        f"/athlete/{athlete_id}/power-curves.json",
+        params={"type": sport_type, "curves": f"{days}d"}
+    )
 
-    # Query the curve endpoint
-    resp = await client.get(api_path)
+    if resp.status_code == 404:
+        return {"error": f"No power curve available for activity type '{sport_type}'"}
+
     server_curve = resp.json()
 
     # Format and sample
     formatted = format_curve(
-        server_curve, metric=metric.upper(), requested_durations=durations, weight=weight
+        server_curve, metric="POWER", requested_durations=durations, weight=weight
     )
 
     return {
         "athlete_id": athlete_id,
+        "sport_type": sport_type,
         "window": f"{days}d",
-        "metric": metric,
         "curve": formatted,
         "weight": weight,
     }
@@ -515,12 +508,12 @@ async def get_activity_curve(
     """Get best efforts (curve) within a single activity.
 
     Server-computed curve for the activity. Sampled to canonical durations.
-    Never raw streams.
+    Never raw streams. Not all activities have computed curves.
 
     Args:
         activity_id: The activity ID (e.g. 'i129230824').
         metric: Curve metric: 'POWER', 'HR', or 'PACE' (default 'POWER').
-        durations: List of duration labels to include. Omit for all 9 canonical durations.
+        durations: List of duration labels to include. Omit for all canonical durations.
     """
     # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
     try:
@@ -557,6 +550,16 @@ async def get_activity_curve(
 
     # Query the curve endpoint
     resp = await client.get(api_path)
+
+    if resp.status_code == 404:
+        return {
+            "activity_id": activity_id,
+            "metric": metric,
+            "note": "Curve not available for this activity",
+            "curve": None,
+            "weight": weight,
+        }
+
     server_curve = resp.json()
 
     # Format and sample
