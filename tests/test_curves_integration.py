@@ -82,82 +82,91 @@ async def test_activity_curve_endpoint_with_multiple_types():
         pytest.skip("No activities with curves found in recent history")
 
 
+def _fallback_ctx():
+    """A Context whose lifespan_context has no client, forcing get_client to
+    fall back to the real hooked global client (built from INTERVALS_API_KEY)."""
+    from fastmcp import Context
+    from unittest.mock import MagicMock
+
+    ctx = MagicMock(spec=Context)
+    ctx.lifespan_context.__getitem__.side_effect = KeyError("client")
+    return ctx
+
+
 @pytest.mark.asyncio
-async def test_get_power_curve_tool():
-    """Test the get_power_curve tool implementation."""
+async def test_get_power_curve_tool_returns_populated_curve():
+    """get_power_curve returns an actual sampled curve, not an empty dict.
+
+    Regression: the tool previously returned {} because the formatter couldn't
+    parse the real {"list": [{"secs": [...], "watts": [...]}]} payload.
+    """
     import sys
     sys.path.insert(0, str(__file__).rsplit('/', 1)[0] + "/../src")
-
     from activities import get_power_curve
-    from fastmcp import Context
-    from unittest.mock import MagicMock
 
-    ctx = MagicMock(spec=Context)
-    ctx.lifespan_context.get.side_effect = lambda x: None
+    result = await get_power_curve(_fallback_ctx(), athlete_id="0", sport_type="Ride", days=90)
 
-    result = await get_power_curve(ctx, athlete_id="0", sport_type="Ride", days=90)
+    print(f"\n✓ get_power_curve curve: {result.get('curve')}")
+    assert result["sport_type"] == "Ride"
+    assert result["window"] == "90d"
 
-    print(f"\n✓ get_power_curve result:")
-    print(f"  athlete_id: {result.get('athlete_id')}")
-    print(f"  sport_type: {result.get('sport_type')}")
-    print(f"  window: {result.get('window')}")
-    print(f"  weight: {result.get('weight')}")
-
-    assert result.get("athlete_id") == "0"
-    assert result.get("sport_type") == "Ride"
-    assert result.get("window") == "90d"
+    curve = result["curve"]
+    assert isinstance(curve, dict) and curve, "curve must be a non-empty mapping"
+    # Canonical labels with watts present.
+    sample = next(iter(curve.values()))
+    assert "w" in sample and isinstance(sample["w"], (int, float))
+    # Weight came from the payload, so W/kg is derived (not fabricated).
+    assert result["weight"] and result["weight"] > 0
+    assert "wkg" in sample
 
 
 @pytest.mark.asyncio
-async def test_get_activity_curve_tool():
-    """Test the get_activity_curve tool implementation."""
+async def test_get_activity_curve_tool_returns_populated_curve():
+    """get_activity_curve returns a populated curve for an activity that has one."""
     import sys
     sys.path.insert(0, str(__file__).rsplit('/', 1)[0] + "/../src")
-
     from activities import get_activity_curve
-    from fastmcp import Context
-    from unittest.mock import MagicMock
 
-    ctx = MagicMock(spec=Context)
-    ctx.lifespan_context.get.side_effect = lambda x: None
-
-    # Get a recent activity that has curves
-    async with httpx.AsyncClient(
-        base_url=BASE_URL,
-        auth=("API_KEY", API_KEY),
-    ) as client:
+    # Find a recent activity that actually has a power curve.
+    activity_id = None
+    async with httpx.AsyncClient(base_url=BASE_URL, auth=("API_KEY", API_KEY)) as client:
         resp = await client.get(
             "/athlete/0/activities",
             params={
                 "oldest": (date.today() - timedelta(days=30)).isoformat(),
                 "newest": date.today().isoformat(),
-            }
+            },
         )
-        activities = resp.json()
-
-    if not activities:
-        pytest.skip("No recent activities found")
-
-    # Find an activity with a curve
-    activity_id = None
-    for activity in activities:
-        test_resp = await httpx.AsyncClient(
-            base_url=BASE_URL,
-            auth=("API_KEY", API_KEY),
-        ).get(f"/activity/{activity['id']}/power-curve.json")
-        if test_resp.status_code == 200:
-            activity_id = activity["id"]
-            break
+        for activity in resp.json():
+            probe = await client.get(f"/activity/{activity['id']}/power-curve.json")
+            if probe.status_code == 200:
+                activity_id = activity["id"]
+                break
 
     if not activity_id:
-        pytest.skip("No activities with curves found")
+        pytest.skip("No recent activities with a power curve found")
 
-    result = await get_activity_curve(ctx, activity_id=activity_id)
+    result = await get_activity_curve(_fallback_ctx(), activity_id=activity_id)
 
-    print(f"\n✓ get_activity_curve result:")
-    print(f"  activity_id: {result.get('activity_id')}")
-    print(f"  metric: {result.get('metric')}")
-    print(f"  weight: {result.get('weight')}")
+    print(f"\n✓ get_activity_curve curve: {result.get('curve')}")
+    assert result["activity_id"] == activity_id
+    assert result["metric"] == "POWER"
 
-    assert result.get("activity_id") == activity_id
-    assert result.get("metric") == "POWER"
+    curve = result["curve"]
+    assert isinstance(curve, dict) and curve, "curve must be a non-empty mapping"
+    sample = next(iter(curve.values()))
+    assert "w" in sample and isinstance(sample["w"], (int, float))
+
+
+@pytest.mark.asyncio
+async def test_get_activity_curve_missing_curve_is_graceful():
+    """A pace curve on a non-distance/typeless activity 404s; the tool reports it."""
+    import sys
+    sys.path.insert(0, str(__file__).rsplit('/', 1)[0] + "/../src")
+    from activities import get_activity_curve
+
+    # Unknown activity id → 404 from the curve endpoint → graceful note, no raise.
+    result = await get_activity_curve(_fallback_ctx(), activity_id="i_does_not_exist")
+
+    assert result["curve"] is None
+    assert "note" in result

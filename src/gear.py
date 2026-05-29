@@ -1,21 +1,14 @@
-import enum
-
 from fastmcp import Context, FastMCP
 
+from client import get_client
 from shaping import project_and_prune_list
 
 gear = FastMCP("gear")
 
 
-class GearFields(enum.Enum):
-    """Semantic field groups for gear data."""
-
-    HEADLINE = "headline"
-    MAINTENANCE = "maintenance"
-    METADATA = "metadata"
-    ALL = "all"
-
-
+# Field groups for gear. Only HEADLINE is surfaced today (list_gear is the sole
+# gear tool, and per ADR-0002 list tools take no selector); the rest document
+# the taxonomy for a future get_gear drill-in tool.
 GEAR_TAXONOMY = {
     "HEADLINE": [
         "name",
@@ -40,42 +33,14 @@ GEAR_TAXONOMY = {
 
 
 @gear.tool(tags={"Gear"}, annotations={"readOnlyHint": True})
-async def list_gear(
-    ctx: Context, athlete_id: str = "0", include: list[str] | None = None
-) -> list:
-    """List gear (bikes, shoes, components) with optional field selection.
+async def list_gear(ctx: Context, athlete_id: str = "0") -> list:
+    """List gear (bikes, shoes, components) — core + HEADLINE fields.
 
     Args:
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
-        include: List of field groups to include. Omit for core + HEADLINE.
-                 Options: HEADLINE (default), MAINTENANCE, METADATA, ALL (raw passthrough).
     """
-    if include is None:
-        include = ["HEADLINE"]
-
-    include_groups = [
-        g.value if isinstance(g, GearFields) else g
-        for g in include
-    ]
-
-    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
-    try:
-        client = ctx.lifespan_context.get("client")
-    except (AttributeError, TypeError):
-        client = None
-
-    if client is None:
-        # HTTP transport fallback: create a client
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.environ.get("INTERVALS_API_KEY")
-        client = httpx.AsyncClient(
-            base_url="https://intervals.icu/api/v1",
-            auth=("API_KEY", api_key),
-        )
-
+    client = await get_client(ctx)
     resp = await client.get(f"/athlete/{athlete_id}/gear")
     items = resp.json()
 
-    return project_and_prune_list(items, include_groups, GEAR_TAXONOMY)
+    return project_and_prune_list(items, ["HEADLINE"], GEAR_TAXONOMY)

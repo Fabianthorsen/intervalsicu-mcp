@@ -3,14 +3,15 @@
 import os
 from typing import AsyncIterator
 
-import httpx
 from dotenv import load_dotenv
-from fastmcp import Context, FastMCP
+from fastmcp import FastMCP
 from fastmcp.server.auth.providers.github import GitHubProvider
 from fastmcp.server.auth import AuthContext
 from fastmcp.server.middleware import AuthMiddleware
 from fastmcp.server.lifespan import lifespan
 
+import client as _client
+from client import build_client
 from activities import activities
 from athletes import athletes
 from events import events
@@ -20,52 +21,22 @@ from wellness import wellness
 
 load_dotenv()
 
-API_KEY = os.environ["INTERVALS_API_KEY"]
 GITHUB_CLIENT_ID = os.environ["GITHUB_CLIENT_ID"]
 GITHUB_CLIENT_SECRET = os.environ["GITHUB_CLIENT_SECRET"]
 JWT_SIGNING_KEY = os.environ["JWT_SIGNING_KEY"]
 ALLOWED_GITHUB_USERS = {u.lower() for u in os.environ.get("ALLOWED_GITHUB_USERS", "").split(",") if u}
-BASE_URL = "https://intervals.icu/api/v1"
-
-# Global client (initialized in lifespan, used by tools)
-_global_client: httpx.AsyncClient | None = None
-
-
-def _error_hook(response: httpx.Response) -> None:
-    """Raise HTTPStatusError on all 4xx/5xx responses."""
-    if response.status_code >= 400:
-        response.raise_for_status()
-
-
-async def _get_client(ctx: Context) -> httpx.AsyncClient:
-    """Get the HTTP client, from lifespan context (stdio) or global (HTTP)."""
-    try:
-        return ctx.lifespan_context["client"]
-    except (KeyError, AttributeError):
-        # Fallback for HTTP transport where lifespan context isn't available
-        global _global_client
-        if _global_client is None:
-            _global_client = httpx.AsyncClient(
-                base_url=BASE_URL,
-                auth=("API_KEY", API_KEY),
-                event_hooks={"response": [_error_hook]},
-            )
-        return _global_client
 
 
 @lifespan
 async def client_lifespan(_: FastMCP) -> AsyncIterator[dict]:
-    global _global_client
-    _global_client = httpx.AsyncClient(
-        base_url=BASE_URL,
-        auth=("API_KEY", API_KEY),
-        event_hooks={"response": [_error_hook]},
-    )
+    # Share the lifespan client with client.get_client's fallback global so
+    # both transports resolve to the same instance.
+    _client._global_client = build_client()
     try:
-        yield {"client": _global_client}
+        yield {"client": _client._global_client}
     finally:
-        await _global_client.aclose()
-        _global_client = None
+        await _client._global_client.aclose()
+        _client._global_client = None
 
 
 auth = GitHubProvider(

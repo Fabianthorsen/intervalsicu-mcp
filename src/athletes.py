@@ -2,6 +2,7 @@ import enum
 
 from fastmcp import Context, FastMCP
 
+from client import get_client
 from shaping import project_and_prune, project_and_prune_list
 
 athletes = FastMCP("athletes")
@@ -76,23 +77,7 @@ async def get_athlete(
         for g in include
     ]
 
-    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
-    try:
-        client = ctx.lifespan_context.get("client")
-    except (AttributeError, TypeError):
-        client = None
-
-    if client is None:
-        # HTTP transport fallback: create a client
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.environ.get("INTERVALS_API_KEY")
-        client = httpx.AsyncClient(
-            base_url="https://intervals.icu/api/v1",
-            auth=("API_KEY", api_key),
-        )
-
+    client = await get_client(ctx)
     data = await client.get(f"/athlete/{athlete_id}")
     obj = data.json()
 
@@ -100,39 +85,13 @@ async def get_athlete(
 
 
 @athletes.tool(tags={"Athletes"}, annotations={"readOnlyHint": True})
-async def list_coached_athletes(ctx: Context, include: list[str] | None = None) -> list:
-    """List athletes the current user coaches with optional field group selection.
+async def list_coached_athletes(ctx: Context) -> list:
+    """List athletes the current user coaches (core + HEADLINE fields).
 
-    Args:
-        include: List of field groups to include. Omit for core + HEADLINE.
-                 Options: HEADLINE (default), ZONES, METADATA, ALL (raw passthrough).
+    Use get_athlete with an athlete's id to drill into zones or metadata.
     """
-    if include is None:
-        include = ["HEADLINE"]
-
-    include_groups = [
-        g.value if isinstance(g, AthleteFields) else g
-        for g in include
-    ]
-
-    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
-    try:
-        client = ctx.lifespan_context.get("client")
-    except (AttributeError, TypeError):
-        client = None
-
-    if client is None:
-        # HTTP transport fallback: create a client
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.environ.get("INTERVALS_API_KEY")
-        client = httpx.AsyncClient(
-            base_url="https://intervals.icu/api/v1",
-            auth=("API_KEY", api_key),
-        )
-
+    client = await get_client(ctx)
     resp = await client.get("/athlete/0/athlete-summary")
     athletes_list = resp.json()
 
-    return project_and_prune_list(athletes_list, include_groups, ATHLETE_TAXONOMY)
+    return project_and_prune_list(athletes_list, ["HEADLINE"], ATHLETE_TAXONOMY)

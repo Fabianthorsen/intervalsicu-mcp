@@ -26,11 +26,15 @@ def format_curve(
     """Format a server-computed curve to canonical durations with optional W/kg derivation.
 
     Args:
-        server_curve: Dict with curve data (label or seconds → value).
+        server_curve: The raw curve payload from intervals.icu. Either a single
+            curve (parallel ``secs`` / ``watts`` / ``values`` arrays) or the
+            athlete-curves envelope ``{"list": [<curve>, ...]}``. A plain
+            ``{seconds: value}`` mapping is also accepted.
         metric: 'POWER', 'HR', or 'PACE' — determines output format.
         requested_durations: List of duration labels (e.g. ['5s', '1m', '5m']).
                             Defaults to all canonical durations.
-        weight: Athlete weight in kg (required if metric is POWER, for W/kg calculation).
+        weight: Athlete weight in kg. When present and positive, POWER results
+            include a derived ``wkg``; otherwise only raw watts are returned.
 
     Returns:
         Dict with formatted curve: {label: value} or {label: {w, wkg}} for power.
@@ -38,8 +42,7 @@ def format_curve(
     if requested_durations is None:
         requested_durations = DEFAULT_DURATIONS
 
-    # Server curve is typically keyed by seconds; normalize to canonical labels
-    curve_by_seconds = _normalize_curve_input(server_curve)
+    curve_by_seconds = _normalize_curve_input(server_curve, metric)
 
     result = {}
     for label in requested_durations:
@@ -52,10 +55,10 @@ def format_curve(
         value = curve_by_seconds[seconds]
 
         if metric == "POWER":
-            # For power, return {w, wkg}
-            if weight is None:
-                weight = 1.0  # Fallback
-            result[label] = {"w": value, "wkg": round(value / weight, 2)}
+            entry = {"w": value}
+            if weight and weight > 0:
+                entry["wkg"] = round(value / weight, 2)
+            result[label] = entry
         else:
             # For HR and pace, just the value
             result[label] = value
@@ -63,18 +66,39 @@ def format_curve(
     return result
 
 
-def _normalize_curve_input(curve: dict) -> dict:
-    """Normalize curve data to {seconds: value} format.
+def _normalize_curve_input(curve: dict, metric: str) -> dict:
+    """Normalize a server curve payload to a {seconds: value} mapping.
 
-    The server may return curves keyed by seconds (int), duration labels (str),
-    or a mix. Normalize to {seconds: value}.
+    Handles the three shapes intervals.icu actually returns:
+      - athlete curves: ``{"list": [{"secs": [...], "watts": [...]}], ...}``
+      - activity curve: ``{"secs": [...], "values": [...], "watts": [...]}``
+      - a plain ``{seconds: value}`` (or canonical-label) mapping
     """
+    if not isinstance(curve, dict):
+        return {}
+
+    # Unwrap the athlete-curves envelope; we request a single window, so take it.
+    entries = curve.get("list")
+    if isinstance(entries, list):
+        if not entries:
+            return {}
+        curve = entries[0]
+
+    secs = curve.get("secs")
+    if isinstance(secs, list):
+        # Parallel-array form. Power lives in `watts`; HR/pace in `values`.
+        values = curve.get("watts") if metric == "POWER" else None
+        if not isinstance(values, list):
+            values = curve.get("values")
+        if not isinstance(values, list):
+            return {}
+        return {s: v for s, v in zip(secs, values) if v is not None}
+
+    # Plain mapping: {seconds:int -> value} or {label:str -> value}.
     normalized = {}
     for key, value in curve.items():
         if isinstance(key, int):
-            # Already in seconds
             normalized[key] = value
         elif isinstance(key, str) and key in CANONICAL_DURATIONS:
-            # Convert label to seconds
             normalized[CANONICAL_DURATIONS[key]] = value
     return normalized

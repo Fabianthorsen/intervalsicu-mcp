@@ -4,6 +4,7 @@ from datetime import date, timedelta
 import httpx
 from fastmcp import Context, FastMCP
 
+from client import get_client
 from shaping import project_and_prune, project_and_prune_list
 from curves import format_curve
 
@@ -221,22 +222,7 @@ async def list_activities_between_dates(
     if to_date is None:
         to_date = date.today()
 
-    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
-    try:
-        client = ctx.lifespan_context.get("client")
-    except (AttributeError, TypeError):
-        client = None
-
-    if client is None:
-        # HTTP transport fallback: create a client
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.environ.get("INTERVALS_API_KEY")
-        client = httpx.AsyncClient(
-            base_url="https://intervals.icu/api/v1",
-            auth=("API_KEY", api_key),
-        )
+    client = await get_client(ctx)
 
     data = await client.get(
         f"/athlete/{athlete_id}/activities",
@@ -269,22 +255,7 @@ async def get_activity(
         for g in include
     ]
 
-    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
-    try:
-        client = ctx.lifespan_context.get("client")
-    except (AttributeError, TypeError):
-        client = None
-
-    if client is None:
-        # HTTP transport fallback: create a client
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.environ.get("INTERVALS_API_KEY")
-        client = httpx.AsyncClient(
-            base_url="https://intervals.icu/api/v1",
-            auth=("API_KEY", api_key),
-        )
+    client = await get_client(ctx)
 
     resp = await client.get(f"/activity/{activity_id}")
     obj = resp.json()
@@ -300,22 +271,7 @@ async def get_activity_intervals(ctx: Context, activity_id: str) -> dict:
     Args:
         activity_id: The activity ID (e.g. 'i129230824').
     """
-    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
-    try:
-        client = ctx.lifespan_context.get("client")
-    except (AttributeError, TypeError):
-        client = None
-
-    if client is None:
-        # HTTP transport fallback: create a client
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.environ.get("INTERVALS_API_KEY")
-        client = httpx.AsyncClient(
-            base_url="https://intervals.icu/api/v1",
-            auth=("API_KEY", api_key),
-        )
+    client = await get_client(ctx)
 
     resp = await client.get(
         f"/activity/{activity_id}/intervals"
@@ -330,22 +286,7 @@ async def get_activity_messages(ctx: Context, activity_id: str) -> list:
     Args:
         activity_id: The activity ID (e.g. 'i129230824').
     """
-    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
-    try:
-        client = ctx.lifespan_context.get("client")
-    except (AttributeError, TypeError):
-        client = None
-
-    if client is None:
-        # HTTP transport fallback: create a client
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.environ.get("INTERVALS_API_KEY")
-        client = httpx.AsyncClient(
-            base_url="https://intervals.icu/api/v1",
-            auth=("API_KEY", api_key),
-        )
+    client = await get_client(ctx)
 
     try:
         resp = await client.get(
@@ -368,22 +309,7 @@ async def set_coach_evaluation(
         activity_id: The activity ID (e.g. 'i129230824').
         evaluation: 1 = WTF, 2 = POOR, 3 = SEEN, 4 = GOOD, 5 = AMAZING.
     """
-    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
-    try:
-        client = ctx.lifespan_context.get("client")
-    except (AttributeError, TypeError):
-        client = None
-
-    if client is None:
-        # HTTP transport fallback: create a client
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.environ.get("INTERVALS_API_KEY")
-        client = httpx.AsyncClient(
-            base_url="https://intervals.icu/api/v1",
-            auth=("API_KEY", api_key),
-        )
+    client = await get_client(ctx)
 
     resp = await client.put(
         f"/activity/{activity_id}", json={"coach_tick": evaluation}
@@ -402,35 +328,12 @@ async def post_activity_message(ctx: Context, activity_id: str, content: str) ->
         activity_id: The activity ID (e.g. 'i129230824').
         content: The message text to post.
     """
-    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
-    try:
-        client = ctx.lifespan_context.get("client")
-    except (AttributeError, TypeError):
-        client = None
-
-    if client is None:
-        # HTTP transport fallback: create a client
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.environ.get("INTERVALS_API_KEY")
-        client = httpx.AsyncClient(
-            base_url="https://intervals.icu/api/v1",
-            auth=("API_KEY", api_key),
-        )
+    client = await get_client(ctx)
 
     resp = await client.post(
         f"/activity/{activity_id}/messages", json={"content": content}
     )
     return {"message": f"Message posted to activity {activity_id}.", "status": resp.status_code}
-
-
-class CurveMetric(enum.Enum):
-    """Curve metric types."""
-
-    POWER = "power"
-    HR = "hr"
-    PACE = "pace"
 
 
 @activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
@@ -453,38 +356,30 @@ async def get_power_curve(
         durations: List of duration labels to include (e.g. ['5m', '20m', '60m']).
                   Omit for all canonical durations.
     """
-    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
+    client = await get_client(ctx)
+
+    # The power-curves endpoint requires the activity type and a curve window.
     try:
-        client = ctx.lifespan_context.get("client")
-    except (AttributeError, TypeError):
-        client = None
-
-    if client is None:
-        # HTTP transport fallback: create a client
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.environ.get("INTERVALS_API_KEY")
-        client = httpx.AsyncClient(
-            base_url="https://intervals.icu/api/v1",
-            auth=("API_KEY", api_key),
+        resp = await client.get(
+            f"/athlete/{athlete_id}/power-curves.json",
+            params={"type": sport_type, "curves": f"{days}d"},
         )
-
-    athlete = await client.get(f"/athlete/{athlete_id}")
-    weight = athlete.json().get("weight", 70.0)
-
-    # Query power-curves endpoint with required type and curves parameters
-    resp = await client.get(
-        f"/athlete/{athlete_id}/power-curves.json",
-        params={"type": sport_type, "curves": f"{days}d"}
-    )
-
-    if resp.status_code == 404:
-        return {"error": f"No power curve available for activity type '{sport_type}'"}
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {
+                "athlete_id": athlete_id,
+                "sport_type": sport_type,
+                "window": f"{days}d",
+                "note": f"No power curve available for activity type '{sport_type}'",
+                "curve": None,
+            }
+        raise
 
     server_curve = resp.json()
+    # Weight rides along in the curve payload; use it for W/kg rather than a guess.
+    entries = server_curve.get("list") or []
+    weight = entries[0].get("weight") if entries else None
 
-    # Format and sample
     formatted = format_curve(
         server_curve, metric="POWER", requested_durations=durations, weight=weight
     )
@@ -515,54 +410,30 @@ async def get_activity_curve(
         metric: Curve metric: 'POWER', 'HR', or 'PACE' (default 'POWER').
         durations: List of duration labels to include. Omit for all canonical durations.
     """
-    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
-    try:
-        client = ctx.lifespan_context.get("client")
-    except (AttributeError, TypeError):
-        client = None
-
-    if client is None:
-        # HTTP transport fallback: create a client
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.environ.get("INTERVALS_API_KEY")
-        client = httpx.AsyncClient(
-            base_url="https://intervals.icu/api/v1",
-            auth=("API_KEY", api_key),
-        )
-
-    # Get activity for weight
-    activity = await client.get(f"/activity/{activity_id}")
-    activity_data = activity.json()
-    weight = activity_data.get("icu_weight", 70.0)
-
-    # Map metric to API path
     metric_lower = metric.lower()
-    if metric_lower == "power":
-        api_path = f"/activity/{activity_id}/power-curve.json"
-    elif metric_lower == "hr":
-        api_path = f"/activity/{activity_id}/hr-curve.json"
-    elif metric_lower == "pace":
-        api_path = f"/activity/{activity_id}/pace-curve.json"
-    else:
+    if metric_lower not in ("power", "hr", "pace"):
         return {"error": f"Unknown metric: {metric}"}
 
-    # Query the curve endpoint
-    resp = await client.get(api_path)
+    client = await get_client(ctx)
 
-    if resp.status_code == 404:
-        return {
-            "activity_id": activity_id,
-            "metric": metric,
-            "note": "Curve not available for this activity",
-            "curve": None,
-            "weight": weight,
-        }
+    # Not every activity has a computed curve, and pace curves don't exist for
+    # non-distance sports — both surface as a 404 we report rather than raise.
+    try:
+        resp = await client.get(f"/activity/{activity_id}/{metric_lower}-curve.json")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return {
+                "activity_id": activity_id,
+                "metric": metric,
+                "note": f"No {metric_lower} curve available for this activity",
+                "curve": None,
+            }
+        raise
 
     server_curve = resp.json()
+    # Weight is included in the activity curve payload; use it for W/kg.
+    weight = server_curve.get("weight")
 
-    # Format and sample
     formatted = format_curve(
         server_curve, metric=metric.upper(), requested_durations=durations, weight=weight
     )

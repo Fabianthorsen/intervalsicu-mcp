@@ -4,6 +4,7 @@ from datetime import date, timedelta
 import httpx
 from fastmcp import Context, FastMCP
 
+from client import get_client
 from shaping import project_and_prune_list
 
 wellness = FastMCP("wellness")
@@ -65,22 +66,7 @@ async def get_wellness(
     ]
 
     oldest = (date.today() - timedelta(days=days - 1)).isoformat()
-    # Get client from lifespan context (stdio) or fallback to creating one (HTTP)
-    try:
-        client = ctx.lifespan_context.get("client")
-    except (AttributeError, TypeError):
-        client = None
-
-    if client is None:
-        # HTTP transport fallback: create a client
-        import os
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.environ.get("INTERVALS_API_KEY")
-        client = httpx.AsyncClient(
-            base_url="https://intervals.icu/api/v1",
-            auth=("API_KEY", api_key),
-        )
+    client = await get_client(ctx)
 
     data = await client.get(
         f"/athlete/{athlete_id}/wellness", params=httpx.QueryParams(oldest=oldest)
