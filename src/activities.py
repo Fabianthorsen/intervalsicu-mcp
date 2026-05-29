@@ -221,7 +221,14 @@ async def list_activities_between_dates(
     if to_date is None:
         to_date = date.today()
 
-    data = await ctx.lifespan_context["client"].get(
+    try:
+        client = ctx.lifespan_context["client"]
+    except KeyError as e:
+        import sys
+        print(f"ERROR: lifespan_context missing 'client'. Keys available: {list(ctx.lifespan_context.keys())}", file=sys.stderr)
+        raise
+
+    data = await client.get(
         f"/athlete/{athlete_id}/activities",
         params=httpx.QueryParams(
             oldest=from_date.isoformat(), newest=to_date.isoformat()
@@ -252,7 +259,14 @@ async def get_activity(
         for g in include
     ]
 
-    resp = await ctx.lifespan_context["client"].get(f"/activity/{activity_id}")
+    try:
+        client = ctx.lifespan_context["client"]
+    except KeyError as e:
+        import sys
+        print(f"ERROR: lifespan_context missing 'client'. Keys available: {list(ctx.lifespan_context.keys())}", file=sys.stderr)
+        raise
+
+    resp = await client.get(f"/activity/{activity_id}")
     obj = resp.json()
 
     return project_and_prune(obj, include_groups, ACTIVITY_TAXONOMY)
