@@ -1,9 +1,57 @@
+import enum
 from datetime import date, timedelta
 
 import httpx
 from fastmcp import Context, FastMCP
 
+from shaping import project_and_prune, project_and_prune_list
+
 events = FastMCP("events")
+
+
+class EventFields(enum.Enum):
+    """Semantic field groups for event/calendar data."""
+
+    HEADLINE = "headline"
+    TARGETS = "targets"
+    COACHING = "coaching"
+    METADATA = "metadata"
+    ALL = "all"
+
+
+EVENT_TAXONOMY = {
+    "HEADLINE": [
+        "name",
+        "start_date_local",
+        "category",
+        "type",
+        "moving_time",
+        "distance",
+        "icu_training_load",
+    ],
+    "TARGETS": [
+        "load_target",
+        "time_target",
+        "distance_target",
+        "power_target",
+        "hr_target",
+        "pace_target",
+        "target",
+        "targets",
+    ],
+    "COACHING": [
+        "description",
+        "tags",
+        "visibility",
+        "hide_from_athlete",
+    ],
+    "METADATA": [
+        "color",
+        "indoor",
+        "paired_event_id",
+        "sub_type",
+    ],
+}
 
 
 @events.tool(tags={"Calendar"}, annotations={"readOnlyHint": True})
@@ -13,49 +61,90 @@ async def list_events(
     days_ahead: int = 7,
     days_back: int = 0,
     category: str | None = None,
+    include: list[str] | None = None,
 ) -> list:
-    """List planned events (workouts, notes, races) on the athlete's calendar.
+    """List planned events (workouts, notes, races) on calendar.
 
     Args:
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
         days_ahead: How many days into the future to return (default 7).
         days_back: How many days into the past to include (default 0).
         category: Comma-separated event categories to filter for, e.g. 'WORKOUT,NOTE'.
+        include: List of field groups to include. Omit for core + HEADLINE.
+                 Options: HEADLINE (default), TARGETS, COACHING, METADATA, ALL (raw passthrough).
     """
+    if include is None:
+        include = ["HEADLINE"]
+
+    include_groups = [
+        g.value if isinstance(g, EventFields) else g
+        for g in include
+    ]
+
     oldest = (date.today() - timedelta(days=days_back)).isoformat()
     newest = (date.today() + timedelta(days=days_ahead)).isoformat()
     data = await ctx.lifespan_context["client"].get(
         f"/athlete/{athlete_id}/events",
         params=httpx.QueryParams(oldest=oldest, newest=newest, category=category),
     )
-    return data.json()
+    records = data.json()
+
+    return project_and_prune_list(records, include_groups, EVENT_TAXONOMY)
 
 
 @events.tool(tags={"Calendar"}, annotations={"readOnlyHint": True})
-async def get_event(ctx: Context, event_id: int, athlete_id: str = "0") -> dict:
-    """Get a single planned event (workout, note, race) by ID.
+async def get_event(
+    ctx: Context, event_id: int, athlete_id: str = "0", include: list[str] | None = None
+) -> dict:
+    """Get a single planned event by ID with optional field group selection.
 
     Args:
         event_id: The event ID.
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+        include: List of field groups to include. Omit for core + HEADLINE.
+                 Options: HEADLINE (default), TARGETS, COACHING, METADATA, ALL (raw passthrough).
     """
+    if include is None:
+        include = ["HEADLINE"]
+
+    include_groups = [
+        g.value if isinstance(g, EventFields) else g
+        for g in include
+    ]
+
     resp = await ctx.lifespan_context["client"].get(
         f"/athlete/{athlete_id}/events/{event_id}"
     )
-    return resp.json()
+    obj = resp.json()
+
+    return project_and_prune(obj, include_groups, EVENT_TAXONOMY)
 
 
 @events.tool(tags={"Training"}, annotations={"readOnlyHint": True})
-async def get_training_plan(ctx: Context, athlete_id: str = "0") -> dict:
-    """Get the athlete's current training plan.
+async def get_training_plan(
+    ctx: Context, athlete_id: str = "0", include: list[str] | None = None
+) -> dict:
+    """Get the athlete's current training plan with optional field selection.
 
     Args:
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+        include: List of field groups to include. Omit for core + HEADLINE.
+                 Options: HEADLINE (default), TARGETS, COACHING, METADATA, ALL (raw passthrough).
     """
+    if include is None:
+        include = ["HEADLINE"]
+
+    include_groups = [
+        g.value if isinstance(g, EventFields) else g
+        for g in include
+    ]
+
     resp = await ctx.lifespan_context["client"].get(
         f"/athlete/{athlete_id}/training-plan"
     )
-    return resp.json()
+    obj = resp.json()
+
+    return project_and_prune(obj, include_groups, EVENT_TAXONOMY)
 
 
 @events.tool(tags={"Calendar"})
