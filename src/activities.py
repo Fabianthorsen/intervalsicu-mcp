@@ -5,6 +5,7 @@ import httpx
 from fastmcp import Context, FastMCP
 
 from shaping import project_and_prune, project_and_prune_list
+from curves import format_curve
 
 activities = FastMCP("activities")
 
@@ -320,3 +321,119 @@ async def post_activity_message(ctx: Context, activity_id: str, content: str) ->
         f"/activity/{activity_id}/messages", json={"content": content}
     )
     return {"message": f"Message posted to activity {activity_id}.", "status": resp.status_code}
+
+
+class CurveMetric(enum.Enum):
+    """Curve metric types."""
+
+    POWER = "power"
+    HR = "hr"
+    PACE = "pace"
+
+
+@activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
+async def get_power_curve(
+    ctx: Context,
+    athlete_id: str = "0",
+    metric: str = "POWER",
+    days: int = 90,
+    durations: list[str] | None = None,
+) -> dict:
+    """Get an athlete's best-effort power/HR/pace curve over a date window.
+
+    Server-computed mean-max curve (best sustained effort for each duration).
+    Sampled to canonical durations (5s…60m). Never raw streams.
+
+    Args:
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+        metric: Curve metric: 'POWER', 'HR', or 'PACE' (default 'POWER').
+        days: Date window in days (default 90).
+        durations: List of duration labels to include (e.g. ['5m', '20m', '60m']).
+                  Omit for all 9 canonical durations.
+    """
+    client = ctx.lifespan_context["client"]
+    athlete = await client.get(f"/athlete/{athlete_id}")
+    weight = athlete.json().get("weight", 70.0)
+
+    # Map metric to API parameters
+    metric_lower = metric.lower()
+    if metric_lower == "power":
+        api_path = f"/athlete/{athlete_id}/power-curves.json"
+        api_type = "power"
+    elif metric_lower == "hr":
+        api_path = f"/athlete/{athlete_id}/hr-curves.json"
+        api_type = "hr"
+    elif metric_lower == "pace":
+        api_path = f"/athlete/{athlete_id}/pace-curves.json"
+        api_type = "pace"
+    else:
+        return {"error": f"Unknown metric: {metric}"}
+
+    # Query the curve endpoint
+    resp = await client.get(api_path)
+    server_curve = resp.json()
+
+    # Format and sample
+    formatted = format_curve(
+        server_curve, metric=metric.upper(), requested_durations=durations, weight=weight
+    )
+
+    return {
+        "athlete_id": athlete_id,
+        "window": f"{days}d",
+        "metric": metric,
+        "curve": formatted,
+        "weight": weight,
+    }
+
+
+@activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
+async def get_activity_curve(
+    ctx: Context,
+    activity_id: str,
+    metric: str = "POWER",
+    durations: list[str] | None = None,
+) -> dict:
+    """Get best efforts (curve) within a single activity.
+
+    Server-computed curve for the activity. Sampled to canonical durations.
+    Never raw streams.
+
+    Args:
+        activity_id: The activity ID (e.g. 'i129230824').
+        metric: Curve metric: 'POWER', 'HR', or 'PACE' (default 'POWER').
+        durations: List of duration labels to include. Omit for all 9 canonical durations.
+    """
+    client = ctx.lifespan_context["client"]
+
+    # Get activity for weight
+    activity = await client.get(f"/activity/{activity_id}")
+    activity_data = activity.json()
+    weight = activity_data.get("icu_weight", 70.0)
+
+    # Map metric to API path
+    metric_lower = metric.lower()
+    if metric_lower == "power":
+        api_path = f"/activity/{activity_id}/power-curve.json"
+    elif metric_lower == "hr":
+        api_path = f"/activity/{activity_id}/hr-curve.json"
+    elif metric_lower == "pace":
+        api_path = f"/activity/{activity_id}/pace-curve.json"
+    else:
+        return {"error": f"Unknown metric: {metric}"}
+
+    # Query the curve endpoint
+    resp = await client.get(api_path)
+    server_curve = resp.json()
+
+    # Format and sample
+    formatted = format_curve(
+        server_curve, metric=metric.upper(), requested_durations=durations, weight=weight
+    )
+
+    return {
+        "activity_id": activity_id,
+        "metric": metric,
+        "curve": formatted,
+        "weight": weight,
+    }
