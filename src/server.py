@@ -22,10 +22,15 @@ from wellness import wellness
 
 load_dotenv()
 
-GITHUB_CLIENT_ID = os.environ["GITHUB_CLIENT_ID"]
-GITHUB_CLIENT_SECRET = os.environ["GITHUB_CLIENT_SECRET"]
-JWT_SIGNING_KEY = os.environ["JWT_SIGNING_KEY"]
+# GitHub OAuth is only used by the remote (HTTP) deployment. A local stdio run
+# is already scoped to the person's own machine and API key, so requiring these
+# would break `uv run python src/server.py` for anyone who just cloned the repo.
+GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET")
+JWT_SIGNING_KEY = os.environ.get("JWT_SIGNING_KEY")
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://intervalsicu-mcp.fly.dev")
 ALLOWED_GITHUB_USERS = {u.lower() for u in os.environ.get("ALLOWED_GITHUB_USERS", "").split(",") if u}
+AUTH_ENABLED = bool(GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET and JWT_SIGNING_KEY)
 
 
 @lifespan
@@ -40,11 +45,15 @@ async def client_lifespan(_: FastMCP) -> AsyncIterator[dict]:
         _client._global_client = None
 
 
-auth = GitHubProvider(
-    client_id=GITHUB_CLIENT_ID,
-    client_secret=GITHUB_CLIENT_SECRET,
-    base_url="https://intervalsicu-mcp.fly.dev",
-    jwt_signing_key=JWT_SIGNING_KEY,
+auth = (
+    GitHubProvider(
+        client_id=GITHUB_CLIENT_ID,
+        client_secret=GITHUB_CLIENT_SECRET,
+        base_url=PUBLIC_BASE_URL,
+        jwt_signing_key=JWT_SIGNING_KEY,
+    )
+    if AUTH_ENABLED
+    else None
 )
 
 mcp = FastMCP(
@@ -113,7 +122,8 @@ def check_github_user(ctx: AuthContext) -> bool:
     return ctx.token.claims.get("login", "").lower() in ALLOWED_GITHUB_USERS
 
 
-mcp.add_middleware(AuthMiddleware(auth=check_github_user))
+if AUTH_ENABLED:
+    mcp.add_middleware(AuthMiddleware(auth=check_github_user))
 mcp.add_middleware(HTTPErrorMiddleware())
 
 mcp.mount(athletes)
@@ -130,4 +140,12 @@ if __name__ == "__main__":
     import os
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     port = int(os.environ.get("PORT", "8000"))
+    if transport != "stdio" and not AUTH_ENABLED:
+        # Local stdio is fine unauthenticated; a network-exposed transport is not.
+        # Failing loudly here beats a deploy that silently drops its allowlist.
+        raise SystemExit(
+            f"Refusing to serve transport '{transport}' without auth: set "
+            "GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET and JWT_SIGNING_KEY "
+            "(and ALLOWED_GITHUB_USERS)."
+        )
     mcp.run(transport=transport, host="0.0.0.0", port=port)
