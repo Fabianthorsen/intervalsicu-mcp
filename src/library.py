@@ -59,6 +59,9 @@ async def create_workout_in_folder(
     - Native Intervals.icu format: use the 'description' field with their text interval language.
     - File upload: provide 'file_contents' (raw text) and 'filename' with a .zwo, .mrc, or .erg extension.
 
+    See create_workout for how to write a description: the prose intro plus
+    structured interval spec for Ride and Run, prose only for other sports.
+
     Args:
         folder_id: The ID of the folder to create the workout in.
         name: The workout name.

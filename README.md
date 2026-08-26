@@ -107,11 +107,16 @@ Pushing to `main` triggers automatic deployment. Add your Fly.io token as a repo
 
 ## Tools
 
+Read tools take an `include` list of semantic field groups and default to a headline set — see [ADR-0002](docs/adr/0002-shape-read-responses-with-field-groups.md).
+
 ### Athletes
 | Tool | Description |
 |------|-------------|
-| `get_athlete` | Profile, FTP, resting HR, weight, timezone, gear |
-| `list_coached_athletes` | Athletes you coach with recent training summaries |
+| `get_athlete` | Profile, weight, resting HR, timezone. `include=['ZONES']` adds per-sport thresholds |
+| `list_coached_athletes` | Athletes you coach |
+| `get_sport_settings` | Full training zones and thresholds for a sport (FTP, LTHR, max HR, zone boundaries) |
+| `update_sport_settings` | Change thresholds or zones for a sport. Affects future analysis only |
+| `apply_sport_settings` | Recalculate past activities against current zones — destructive, run only on request |
 
 ### Activities
 | Tool | Description |
@@ -122,11 +127,16 @@ Pushing to `main` triggers automatic deployment. Add your Fly.io token as a repo
 | `get_activity_messages` | Comments/feedback on an activity (athlete and coach) |
 | `set_coach_evaluation` | Set evaluation tick on activity: 1=WTF 2=POOR 3=SEEN 4=GOOD 5=AMAZING |
 | `post_activity_message` | Post coaching feedback comment on activity |
+| `search_activities` | Find activities by name, or by tag with a `#` prefix, across all history |
+| `get_activity_window_metrics` | NP, IF, TSS, VI, decoupling, avg HR/cadence for any time window in an activity |
+| `get_power_curve` | Best-effort power curve for an athlete over a date window |
+| `get_activity_curve` | Best-effort power/HR/pace curve within one activity |
 
 ### Wellness
 | Tool | Description |
 |------|-------------|
-| `get_wellness` | Daily records: CTL, ATL, TSB, HRV, resting HR, sleep duration/score, weight |
+| `get_wellness` | Daily records: CTL/ATL/TSB, HRV, resting HR, sleep, weight, plus `SUBJECTIVE` and `NUTRITION` groups |
+| `update_wellness` | Record weight, HRV, sleep, self-reported fatigue/soreness/mood, calories and macros for a day |
 
 ### Gear
 | Tool | Description |
@@ -153,6 +163,13 @@ Pushing to `main` triggers automatic deployment. Add your Fly.io token as a repo
 | `create_workout_in_folder` | Create a workout inside a folder (text format or file upload: .zwo/.mrc/.erg) |
 | `update_workout` | Update a library workout (name, description, targets, duration, type, etc.) |
 | `delete_workout` | Delete a workout from the library |
+
+### Chats
+| Tool | Description |
+|------|-------------|
+| `list_chats` | Coach/athlete conversations, most recently active first, with unread counts |
+| `get_chat_messages` | Messages in a chat, most recent first |
+| `send_chat_message` | Send a message. One-to-one chats only; group chats are refused |
 
 ## Tips & Example Workflows
 
@@ -193,4 +210,13 @@ If you use Claude Code (CLI), save the prompt above as `~/.claude/commands/revie
 uv run pytest tests/ -v
 ```
 
-Tests hit the real API and require valid credentials in `.env`. Write tests clean up after themselves.
+Unit tests for the pure modules (`shaping`, `curves`, `windows`, taxonomies) run offline with no
+credentials. Integration tests hit the real API and need `INTERVALS_API_KEY` in `.env`; write tests
+clean up after themselves.
+
+`tests/test_taxonomy_fields.py` checks every field group against `openapi-spec.json`. Field groups are
+hand-written, and a name that does not exist on the schema prunes to nothing at runtime — the tool
+looks sparse rather than broken. Run it after editing any taxonomy.
+
+If requests fail TLS verification behind a corporate proxy, `conftest.py` injects `truststore` so
+Python uses the OS trust store instead of certifi's bundle.
