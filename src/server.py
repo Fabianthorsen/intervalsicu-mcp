@@ -11,7 +11,7 @@ from fastmcp.server.middleware import AuthMiddleware
 from fastmcp.server.lifespan import lifespan
 
 import client as _client
-from client import build_client
+from client import HTTPErrorMiddleware, build_client
 from activities import activities
 from athletes import athletes
 from events import events
@@ -163,6 +163,7 @@ def check_github_user(ctx: AuthContext) -> bool:
 
 
 mcp.add_middleware(AuthMiddleware(auth=check_github_user))
+mcp.add_middleware(HTTPErrorMiddleware())
 
 mcp.mount(athletes)
 mcp.mount(activities)
