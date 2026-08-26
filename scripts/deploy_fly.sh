@@ -79,7 +79,7 @@ echo
 bold "GitHub OAuth app"
 echo "Create one at https://github.com/settings/developers -> New OAuth App:"
 echo "  Homepage URL:              $BASE_URL"
-echo "  Authorization callback URL: $BASE_URL/auth/github/callback"
+echo "  Authorization callback URL: $BASE_URL/auth/callback"
 echo "Then generate a client secret and paste both below."
 echo
 ask GITHUB_CLIENT_ID "GitHub client ID"
