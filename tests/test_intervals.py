@@ -15,7 +15,7 @@ from intervals import (
     shape_intervals,
 )
 from intervals import find_section, plan_cuts
-from windows import WindowError, resolve_boundary
+from windows import WindowError, resolve_section
 
 ONE_HZ = list(range(0, 3600))
 SMART = list(range(0, 3600, 4))
@@ -146,26 +146,40 @@ def test_an_edit_that_changes_nothing_is_rejected() -> None:
         apply_edits(_interval())
 
 
-def test_cut_point_resolves_through_the_time_stream() -> None:
+def test_section_ends_are_exclusive_indices() -> None:
+    """An interval's end_index is one past its last sample: elapsed == end - start.
+
+    bisect_left on the end would cut the section a second short.
+    """
+    start, end = resolve_section(ONE_HZ, 1200, 2400)
+    assert (start, end) == (1200, 2401)
+    assert end - start == 2400 - 1200 + 1
+
+
+def test_cut_points_resolve_through_the_time_stream() -> None:
     """Smart recording: 1200s is index 300, not index 1200."""
-    assert resolve_boundary(ONE_HZ, 1200) == 1200
-    assert resolve_boundary(SMART, 1200) == 300
+    assert resolve_section(SMART, 1200, 2400)[0] == 300
 
 
-def test_a_section_may_start_at_the_very_beginning() -> None:
-    """resolve_window rejects the edges; a section legitimately starts at 0:00."""
-    assert resolve_boundary(ONE_HZ, 0) == 0
-    assert resolve_boundary(ONE_HZ, 3599) == 3599
+def test_a_section_may_span_the_whole_recording() -> None:
+    """Both ends already exist as boundaries, so this needs no cut at all."""
+    start, end = resolve_section(ONE_HZ, 0, 3599)
+    assert (start, end) == (0, len(ONE_HZ))
 
 
-def test_a_section_outside_the_recording_is_refused() -> None:
+def test_a_section_past_the_end_is_refused() -> None:
     with pytest.raises(WindowError):
-        resolve_boundary(ONE_HZ, 7200)
+        resolve_section(ONE_HZ, 1200, 7200)
+
+
+def test_an_inverted_range_is_refused_before_any_cut() -> None:
+    with pytest.raises(WindowError):
+        resolve_section(ONE_HZ, 2400, 1200)
 
 
 def test_cutting_without_a_time_stream_says_what_still_works() -> None:
     with pytest.raises(WindowError) as exc:
-        resolve_boundary([], 600)
+        resolve_section([], 600, 1200)
     assert "relabelled by id" in str(exc.value)
 
 

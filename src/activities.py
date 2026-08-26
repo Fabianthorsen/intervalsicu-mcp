@@ -23,7 +23,7 @@ from windows import (
     WindowError,
     extract_time_stream,
     format_window_metrics,
-    resolve_boundary,
+    resolve_section,
     resolve_window,
 )
 
@@ -412,7 +412,9 @@ async def create_activity_interval(
         activity_id: The activity ID (e.g. 'i129230824').
         start_seconds: Section start, in elapsed seconds from the activity
                        start, including any pauses.
-        end_seconds: Section end, in elapsed seconds. Must be after start.
+        end_seconds: Section end, in elapsed seconds, inclusive — a section of
+                     1200-2400 covers the second at 2400 too. Must be after
+                     start_seconds.
         label: Name for the section, e.g. 'tempo block' or 'threshold rep 2'.
         interval_type: 'WORK' (default) or 'RECOVERY'. Affects how
                        intervals.icu analyses and groups the interval.
@@ -432,8 +434,9 @@ async def create_activity_interval(
     time_stream = extract_time_stream(stream_resp.json())
 
     try:
-        start_index = resolve_boundary(time_stream, start_seconds)
-        end_index = resolve_boundary(time_stream, end_seconds)
+        start_index, end_index = resolve_section(
+            time_stream, start_seconds, end_seconds
+        )
     except WindowError as exc:
         raise ToolError(str(exc)) from exc
 

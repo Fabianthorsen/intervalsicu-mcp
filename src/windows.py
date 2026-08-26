@@ -129,28 +129,49 @@ def format_window_metrics(interval: dict) -> dict:
     return metrics
 
 
-def resolve_boundary(time_stream: list[int], at_seconds: int) -> int:
-    """Map a single elapsed time to the first stream index at or after it.
+def resolve_section(
+    time_stream: list[int], start_seconds: int, end_seconds: int
+) -> tuple[int, int]:
+    """Map a time range to the index boundaries that carve it out as an interval.
 
-    Used for cutting an interval, where the API wants one index rather than a
-    range. Unlike resolve_window this accepts the very start and end of the
-    recording: a section can legitimately begin at 0:00 or run to the finish,
-    and a cut there is a no-op rather than an error.
+    Note the convention differs from resolve_window. interval-stats treats
+    end_index as the last sample *in* the window; an interval's end_index is
+    the first sample *after* it — every interval satisfies
+    elapsed_time == end_index - start_index, and the last one ends at
+    len(stream), one past the final sample. So the end resolves with
+    bisect_right, not bisect_left, or the section comes out a sample short and
+    a section running to the finish leaves a sliver behind.
+
+    Both ends of the recording are accepted: a section can legitimately begin
+    at 0:00 or run to the end, where the boundary already exists and no cut is
+    needed.
 
     Raises:
-        WindowError: if the time falls outside the recording.
+        WindowError: if the range is inverted or falls outside the recording.
     """
     if not time_stream:
         raise WindowError(
-            "This activity has no time stream, so a position in it cannot be "
+            "This activity has no time stream, so a section of it cannot be "
             "resolved. Its existing intervals can still be relabelled by id."
+        )
+    if end_seconds <= start_seconds:
+        raise WindowError(
+            f"end_seconds ({end_seconds}) must be greater than start_seconds "
+            f"({start_seconds})."
         )
 
     duration = time_stream[-1]
-    if at_seconds < time_stream[0] or at_seconds > duration:
+    if start_seconds < time_stream[0] or start_seconds >= duration:
         raise WindowError(
-            f"at_seconds ({at_seconds}) falls outside the recording, "
+            f"start_seconds ({start_seconds}) falls outside the recording, "
+            f"which runs 0-{duration}s."
+        )
+    if end_seconds > duration:
+        raise WindowError(
+            f"end_seconds ({end_seconds}) is past the end of the recording, "
             f"which runs 0-{duration}s."
         )
 
-    return bisect_left(time_stream, at_seconds)
+    return bisect_left(time_stream, start_seconds), bisect_right(
+        time_stream, end_seconds
+    )
