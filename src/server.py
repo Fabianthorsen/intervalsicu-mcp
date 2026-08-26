@@ -11,9 +11,10 @@ from fastmcp.server.middleware import AuthMiddleware
 from fastmcp.server.lifespan import lifespan
 
 import client as _client
-from client import build_client
+from client import HTTPErrorMiddleware, build_client
 from activities import activities
 from athletes import athletes
+from chats import chats
 from events import events
 from gear import gear
 from library import library
@@ -54,105 +55,55 @@ mcp = FastMCP(
     You have access to the Intervals.icu training platform for endurance athletes.
 
     ## Key conventions
-    - `athlete_id`: Use '0' to refer to the authenticated user. For coached athletes use their
-      ID (e.g. 'i12345') — get IDs from list_coached_athletes.
-    - Activity IDs look like 'i129230824'.
+    - `athlete_id`: '0' is the authenticated user. For a coached athlete use their ID
+      (e.g. 'i12345') — get IDs from list_coached_athletes.
+    - Activity IDs look like 'i129230824'; event IDs are integers.
     - Dates are ISO-8601 strings (e.g. '2026-03-10').
-    - Distances are in metres, durations in seconds.
+    - Distances are metres, durations seconds, power watts.
+    - Read tools take an `include` list of field groups and default to a headline set.
+      Ask for more groups when you need them; 'ALL' is a raw passthrough and is large.
+    - Subjective wellness scales (fatigue, soreness, stress, mood, motivation,
+      sleepQuality) run 1 (best) to 4 (worst).
 
     ## Tool groups
-    - **Athletes** — profile data (FTP, weight, HR zones, timezone), list coaches and coached athletes
-    - **Activities** — completed workouts with intervals, power, HR, pace and TSS; includes coaching tools
-      (set evaluation ticks, post feedback) for coaches reviewing athlete workouts
-    - **Wellness** — daily HRV, resting HR, sleep, CTL/ATL/TSB (fitness/fatigue/form)
-    - **Gear** — bikes, shoes, components and maintenance reminders
-    - **Calendar & Events** — planned workouts, notes, races, and rest days; create inline workouts or
-      schedule from the library; get training plan
-    - **Workout Library** — folders and structured workout definitions. list_workout_folders returns folders
-      with workouts nested inside as 'children'.
+    - **Athletes** — profile, plus per-sport thresholds and zones. FTP is per sport, not
+      per athlete: get_athlete include=['ZONES'] for the numbers, get_sport_settings for
+      full zone boundaries, update_sport_settings to change them.
+    - **Activities** — completed sessions, intervals, best-effort curves, and coaching
+      actions (evaluation ticks, feedback). search_activities finds a session when the
+      date is unknown. get_activity_window_metrics gives NP/IF/TSS/decoupling for any
+      time window, not just recorded intervals.
+    - **Wellness** — HRV, resting HR, sleep, CTL/ATL/TSB, self-reported readiness and
+      nutrition. update_wellness records any of it for a given day.
+    - **Gear** — bikes, shoes, components, distance covered and maintenance reminders
+    - **Calendar & Events** — planned workouts, notes and races; create inline or
+      schedule from the library; training plan
+    - **Workout Library** — folders and structured workouts. list_workout_folders nests
+      workouts under each folder as 'children'.
+    - **Chats** — the standing coach/athlete conversation. Separate from
+      post_activity_message, which comments on one session. Sending is limited to
+      one-to-one chats.
 
     ## Common workflows
-    - To review an athlete's week: use list_events + list_activities_between_dates
-    - To check readiness: use get_wellness with days=1 for today, days=7 or days=30 for trends
-    - To give feedback: use set_coach_evaluation and/or post_activity_message
-    - To build a workout library: create folders with create_workout_folder, then add
-      workouts with create_workout_in_folder
-    - To schedule a library workout: use list_workout_folders to find the workout id (in
-      children), then call schedule_workout
+    - Review an athlete's week: list_events + list_activities_between_dates
+    - Check readiness: get_wellness with days=1 for today, 7 or 30 for a trend; include
+      CTL_ATL_TSB for form and SUBJECTIVE for how they say they feel
+    - Give feedback: set_coach_evaluation and/or post_activity_message
+    - Compare halves of a ride: get_activity_window_metrics twice with different windows
+    - Build a library: create_workout_folder, then create_workout_in_folder
+    - Schedule from the library: list_workout_folders to find the workout id in
+      'children', then schedule_workout
 
-    ## Creating workouts
+    ## Writing workouts
+    Always populate `description`. create_workout's documentation carries the full
+    format, including the Intervals.icu structured-interval syntax for Ride and Run and
+    the prose-only convention for other sports. Follow it for schedule_workout and
+    create_workout_in_folder too.
 
-    Always populate the `description` field when creating or scheduling a workout.
-
-    ### Cycling (type='Ride') and Running (type='Run')
-    The description must contain two parts:
-
-    1. **Prose intro** (2-4 sentences): purpose, feel, and key coaching focus for the session.
-    2. **Structured spec** using Intervals.icu text format immediately after:
-       - Section headers (no dash) label blocks: `Warmup`, `Main set Nx`, `Cooldown`
-       - Each step starts with `- `, followed by duration then intensity target
-       - Duration: `30s`, `10m`, `1m30`
-       - **Ride intensity** — use zones (`Z2`, `Z3`, `Z4`) for steady-state work; use
-         `%FTP` ranges (e.g. `90-95%`) when precision or flexibility matters (e.g. non-ERG,
-         hard intervals). Add cadence where relevant: `85-95rpm`
-       - **Run intensity** — use HR zones (`Z2 HR`, `Z3 HR`) for steady-state work; use
-         `%LTHR` ranges (e.g. `95-100% LTHR`) when precision matters
-       - Repeats: put the multiplier on the section header, e.g. `Main set 5x`
-
-    Example Ride description:
-    ```
-    Threshold work to build sustained power. Keep cadence high throughout the intervals
-    and focus on smooth pedalling. If riding outdoors, use the ranges to accommodate terrain.
-
-    Warmup
-    - 15m Z2 85-95rpm
-
-    Main set 4x
-    - 8m 95-100% 88-92rpm
-    - 4m Z1 recovery
-
-    Cooldown
-    - 10m Z1
-    ```
-
-    Example Run description:
-    ```
-    Aerobic base run with strides to finish. Keep effort conversational throughout the
-    main block. The strides are short and sharp — focus on form, not speed.
-
-    Warmup
-    - 10m Z1 HR
-
-    Main set
-    - 30m Z2 HR
-
-    Strides 6x
-    - 20s 95-100% LTHR
-    - 40s Z1 HR recovery
-
-    Cooldown
-    - 5m Z1 HR
-    ```
-
-    ### All other sport types (Swim, WeightTraining, Yoga, etc.)
-    Write a well-formatted prose description covering: goal of the session, equipment
-    needed, step-by-step structure (sets, reps, distances, rest periods), and any
-    technique cues. No structured interval spec is required.
-
-    ## Reviewing a workout (coached athletes)
-    To analyse a workout and post coaching feedback:
-    1. Identify the activity — use list_activities_between_dates (last 14 days) to find the
-       latest, or use a specific activity ID.
-    2. Fetch in parallel: get_activity (summary stats: TSS, load, HR, power) and
-       get_activity_intervals (interval breakdown, targets vs actuals, power zones).
-    3. Check existing messages with get_activity_messages — if the athlete has left a
-       comment, read it and factor it into your feedback (e.g. they felt tired, had an
-       issue, or are happy with the effort). Avoid duplicating existing coach feedback.
-    4. Assess: did the athlete hit targets? Interval consistency? Compare load to wellness
-       (get_wellness with days=7 if needed). Flag high HR, dropped power, missed intervals.
-    5. Set a tick with set_coach_evaluation: 1=WTF, 2=POOR, 3=SEEN, 4=GOOD, 5=AMAZING.
-    6. Post feedback with post_activity_message: 2–4 sentences, direct and specific,
-       mention what went well and one concrete observation or suggestion.
+    ## Changing an athlete's numbers
+    update_sport_settings affects future analysis only and is safe to correct.
+    apply_sport_settings recalculates every past activity against the new zones — run it
+    only on an explicit request, never as a follow-up to changing a threshold.
     """,
 )
 
@@ -163,6 +114,7 @@ def check_github_user(ctx: AuthContext) -> bool:
 
 
 mcp.add_middleware(AuthMiddleware(auth=check_github_user))
+mcp.add_middleware(HTTPErrorMiddleware())
 
 mcp.mount(athletes)
 mcp.mount(activities)
@@ -170,6 +122,7 @@ mcp.mount(events)
 mcp.mount(gear)
 mcp.mount(wellness)
 mcp.mount(library)
+mcp.mount(chats)
 
 
 

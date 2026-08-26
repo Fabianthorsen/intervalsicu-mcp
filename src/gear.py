@@ -13,21 +13,20 @@ GEAR_TAXONOMY = {
     "HEADLINE": [
         "name",
         "type",
-        "total_distance",
-        "total_time",
-        "activity_count",
+        "distance",
+        "time",
+        "retired",
     ],
     "MAINTENANCE": [
-        "maintenance_reminders",
-        "maintenance_interval",
-        "last_maintenance_date",
+        "reminders",
+        "component",
+        "component_ids",
     ],
     "METADATA": [
-        "date_added",
+        "purchased",
         "notes",
-        "brand",
-        "model",
-        "status",
+        "use_elapsed_time",
+        "activity_filters",
     ],
 }
 

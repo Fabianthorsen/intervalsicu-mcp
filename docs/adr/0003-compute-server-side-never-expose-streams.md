@@ -25,3 +25,28 @@ compute it, that is a strong signal to reconsider exposing it at all rather than
 for the stream. This is the data-volume companion to ADR-0002's field-group shaping:
 0002 trims *which fields* of an object ship; 0003 governs *whether raw time-series data*
 ships at all.
+
+## Amendment: the boundary is the tool result, not the fetch
+
+The rule above was written as "never fetch streams", but that is not the principle it
+was protecting. The cost being avoided is **stream data reaching the model's context** —
+tokens and unreliable arithmetic. A stream the MCP server reads, uses and discards costs
+neither. So, more precisely:
+
+- **The server may fetch a stream. The model may never see one.** Stream data must not
+  appear in a tool result, in whole, in part, or downsampled.
+- Fetching a stream is justified only to make a *server-computed* result addressable or
+  correct — not to compute metrics that intervals.icu already computes.
+
+The motivating case is `get_activity_window_metrics`. intervals.icu computes windowed
+statistics via `interval-stats`, but addresses windows by **stream index**, while a coach
+thinks in elapsed time ("the last hour", "from 40 to 60 minutes"). Index equals elapsed
+second only for an unpaused 1Hz recording; smart recording and mid-ride pauses break the
+correspondence, and converting by arithmetic would silently return statistics for the
+wrong segment of the ride. The tool therefore fetches the `time` stream alone, uses it to
+resolve seconds to indices, and returns roughly a dozen scalars. The stream is never part
+of the result.
+
+This does not reopen exposing `/streams`, nor computing NP, TSS or decoupling from raw
+samples — those still come from the server. The test to apply to a new tool is not "does
+this touch a stream" but **"does any stream data end up in the tool's output"**.

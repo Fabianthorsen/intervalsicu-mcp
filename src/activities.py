@@ -5,8 +5,14 @@ import httpx
 from fastmcp import Context, FastMCP
 
 from client import get_client
-from shaping import project_and_prune, project_and_prune_list
+from shaping import CORE_FIELDS, project_and_prune, project_and_prune_list, prune
 from curves import format_curve
+from windows import (
+    WindowError,
+    extract_time_stream,
+    format_window_metrics,
+    resolve_window,
+)
 
 activities = FastMCP("activities")
 
@@ -63,7 +69,6 @@ ACTIVITY_TAXONOMY = {
         "polarization_index",
         "icu_efficiency_factor",
         "power_load",
-        "power_load_type",
         "icu_joules",
         "icu_joules_above_ftp",
         "avg_lr_balance",
@@ -203,6 +208,15 @@ ACTIVITY_TAXONOMY = {
 }
 
 
+# Field list sent to the API for list calls: the HEADLINE group plus the core
+# fields that ship unconditionally. Every name is verified against the Activity
+# schema by tests/test_taxonomy_fields.py, so this cannot request a field that
+# does not exist.
+_HEADLINE_FIELDS_PARAM = ",".join(
+    sorted(CORE_FIELDS | set(ACTIVITY_TAXONOMY["HEADLINE"]))
+)
+
+
 @activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
 async def list_activities_between_dates(
     ctx: Context,
@@ -227,7 +241,13 @@ async def list_activities_between_dates(
     data = await client.get(
         f"/athlete/{athlete_id}/activities",
         params=httpx.QueryParams(
-            oldest=from_date.isoformat(), newest=to_date.isoformat()
+            oldest=from_date.isoformat(),
+            newest=to_date.isoformat(),
+            # Project server-side as well as locally. An Activity carries ~200
+            # fields and shaping discards nearly all of them, so asking for the
+            # dozen we keep avoids pulling the rest over the wire. Output is
+            # unchanged — project_and_prune_list still has the final say.
+            fields=_HEADLINE_FIELDS_PARAM,
         ),
     )
     records = data.json()
@@ -251,7 +271,7 @@ async def get_activity(
         include = ["HEADLINE"]
 
     include_groups = [
-        g.value if isinstance(g, ActivityFields) else g
+        (g.value if isinstance(g, ActivityFields) else g).upper()
         for g in include
     ]
 
@@ -444,3 +464,99 @@ async def get_activity_curve(
         "curve": formatted,
         "weight": weight,
     }
+
+
+@activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
+async def get_activity_window_metrics(
+    ctx: Context,
+    activity_id: str,
+    start_seconds: int,
+    end_seconds: int,
+) -> dict:
+    """Get power, HR and load metrics for any time window within an activity.
+
+    Answers questions the recorded intervals do not, such as "how did the last
+    hour of that ride compare to the first" or "what did she average between
+    40 and 60 minutes". The window is arbitrary — it need not line up with laps
+    or intervals.
+
+    Returns normalized and average power, variability index, intensity factor,
+    TSS, decoupling, average HR and cadence for the window. All of it is
+    computed by intervals.icu, not derived from raw samples.
+
+    Times are elapsed seconds from the start of the activity, including any
+    pauses. Use get_activity for the activity's total duration.
+
+    Args:
+        activity_id: The activity ID (e.g. 'i129230824').
+        start_seconds: Window start, in elapsed seconds from the activity start.
+        end_seconds: Window end, in elapsed seconds. Must be after start_seconds.
+    """
+    client = await get_client(ctx)
+
+    # The time stream maps sample index to elapsed second. It is needed because
+    # interval-stats addresses windows by index, and index only equals second
+    # for an unpaused 1Hz recording. Fetched here and discarded — per ADR-0003
+    # no part of it is returned to the caller.
+    stream_resp = await client.get(
+        f"/activity/{activity_id}/streams.json", params={"types": "time"}
+    )
+    time_stream = extract_time_stream(stream_resp.json())
+
+    try:
+        start_index, end_index = resolve_window(time_stream, start_seconds, end_seconds)
+    except WindowError as exc:
+        return {
+            "activity_id": activity_id,
+            "requested_window": {"start_seconds": start_seconds, "end_seconds": end_seconds},
+            "error": str(exc),
+            "metrics": None,
+        }
+
+    stats_resp = await client.get(
+        f"/activity/{activity_id}/interval-stats",
+        params={"start_index": start_index, "end_index": end_index},
+    )
+    metrics = format_window_metrics(stats_resp.json())
+
+    return {
+        "activity_id": activity_id,
+        "window": {
+            "start_seconds": time_stream[start_index],
+            "end_seconds": time_stream[end_index],
+        },
+        "metrics": metrics,
+    }
+
+
+@activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
+async def search_activities(
+    ctx: Context,
+    query: str,
+    athlete_id: str = "0",
+    limit: int = 20,
+) -> list:
+    """Find activities by name or tag, across the athlete's whole history.
+
+    Use this when the date is unknown — "find her Alpe du Zwift attempts" or
+    "when did he last do a ramp test". For a known date range,
+    list_activities_between_dates is cheaper.
+
+    Args:
+        query: Name to search for, case-insensitive and matched as a substring.
+               Prefix with '#' to match a tag exactly, e.g. '#race'.
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+        limit: Maximum number of activities to return (default 20).
+    """
+    client = await get_client(ctx)
+
+    resp = await client.get(
+        f"/athlete/{athlete_id}/activities/search",
+        params=httpx.QueryParams(q=query, limit=limit),
+    )
+    results = resp.json()
+
+    # The search endpoint returns a purpose-built summary (name, date, type,
+    # distance, moving_time, tags, race, description) rather than a full
+    # Activity, so there is nothing to project — only empties to drop.
+    return [prune(item) for item in results]

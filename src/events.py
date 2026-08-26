@@ -23,7 +23,6 @@ class EventFields(enum.Enum):
 EVENT_TAXONOMY = {
     "HEADLINE": [
         "name",
-        "start_date_local",
         "category",
         "type",
         "moving_time",
@@ -31,26 +30,30 @@ EVENT_TAXONOMY = {
         "icu_training_load",
     ],
     "TARGETS": [
+        "target",
         "load_target",
         "time_target",
         "distance_target",
-        "power_target",
-        "hr_target",
-        "pace_target",
-        "target",
-        "targets",
+        "icu_intensity",
+        "icu_ftp",
+        "carbs_per_hour",
+        "max_training_time",
     ],
     "COACHING": [
         "description",
         "tags",
-        "visibility",
         "hide_from_athlete",
+        "athlete_cannot_edit",
+        "show_as_note",
     ],
     "METADATA": [
         "color",
         "indoor",
-        "paired_event_id",
         "sub_type",
+        "external_id",
+        "updated",
+        "created_by_id",
+        "plan_applied",
     ],
 }
 
@@ -102,7 +105,7 @@ async def get_event(
         include = ["HEADLINE"]
 
     include_groups = [
-        g.value if isinstance(g, EventFields) else g
+        (g.value if isinstance(g, EventFields) else g).upper()
         for g in include
     ]
 
@@ -131,7 +134,7 @@ async def get_training_plan(
         include = ["HEADLINE"]
 
     include_groups = [
-        g.value if isinstance(g, EventFields) else g
+        (g.value if isinstance(g, EventFields) else g).upper()
         for g in include
     ]
 
@@ -157,6 +160,9 @@ async def schedule_workout(
     hide_from_athlete: bool | None = None,
 ) -> dict:
     """Schedule a workout from the workout library onto an athlete's calendar.
+
+    The library workout's description is copied onto the calendar event. See
+    create_workout for the description format if you are authoring one.
 
     Args:
         workout_id: The library workout ID to schedule. Get IDs from list_workout_folders.
@@ -321,11 +327,47 @@ async def create_workout(
 ) -> dict:
     """Create a workout event directly on an athlete's calendar.
 
+    ## Writing the description
+
+    Always populate `description`. For Ride and Run it has two parts: a prose
+    intro of 2-4 sentences covering purpose, feel and coaching focus, followed
+    immediately by a structured spec in Intervals.icu text format.
+
+    Spec format:
+      - Section headers carry no dash: `Warmup`, `Main set 4x`, `Cooldown`.
+        Put any repeat count on the header, not the steps.
+      - Each step starts with `- `, then a duration, then an intensity target.
+      - Durations look like `30s`, `10m`, `1m30`.
+      - Ride intensity: zones (`Z2`, `Z3`) for steady work, `%FTP` ranges
+        (`90-95%`) where precision or outdoor flexibility matters. Add cadence
+        where it matters: `85-95rpm`.
+      - Run intensity: HR zones (`Z2 HR`) for steady work, `%LTHR` ranges
+        (`95-100% LTHR`) where precision matters.
+
+    Example (Ride):
+        Threshold work to build sustained power. Keep cadence high through the
+        intervals and focus on smooth pedalling. Outdoors, use the ranges to
+        accommodate terrain.
+
+        Warmup
+        - 15m Z2 85-95rpm
+
+        Main set 4x
+        - 8m 95-100% 88-92rpm
+        - 4m Z1 recovery
+
+        Cooldown
+        - 10m Z1
+
+    For every other sport (Swim, WeightTraining, Yoga and so on) write prose
+    only: goal, equipment, step-by-step structure with sets, reps, distances
+    and rest, plus technique cues. No structured spec is needed.
+
     Args:
         athlete_id: The athlete's ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
         date: The date to schedule the workout on, in ISO-8601 format (e.g. '2026-03-10').
         name: Workout name.
-        description: Workout description or interval structure in Intervals.icu native format.
+        description: Workout description or interval structure — see above for the format.
         type: Sport type (e.g. 'Ride', 'Run', 'Swim').
         indoor: Whether the workout is indoors.
         moving_time: Target duration in seconds.
