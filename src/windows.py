@@ -127,3 +127,30 @@ def format_window_metrics(interval: dict) -> dict:
         metrics["variability_index"] = round(normalized / avg, 3)
 
     return metrics
+
+
+def resolve_boundary(time_stream: list[int], at_seconds: int) -> int:
+    """Map a single elapsed time to the first stream index at or after it.
+
+    Used for cutting an interval, where the API wants one index rather than a
+    range. Unlike resolve_window this accepts the very start and end of the
+    recording: a section can legitimately begin at 0:00 or run to the finish,
+    and a cut there is a no-op rather than an error.
+
+    Raises:
+        WindowError: if the time falls outside the recording.
+    """
+    if not time_stream:
+        raise WindowError(
+            "This activity has no time stream, so a position in it cannot be "
+            "resolved. Its existing intervals can still be relabelled by id."
+        )
+
+    duration = time_stream[-1]
+    if at_seconds < time_stream[0] or at_seconds > duration:
+        raise WindowError(
+            f"at_seconds ({at_seconds}) falls outside the recording, "
+            f"which runs 0-{duration}s."
+        )
+
+    return bisect_left(time_stream, at_seconds)

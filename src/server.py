@@ -81,7 +81,11 @@ mcp = FastMCP(
     - **Activities** — completed sessions, intervals, best-effort curves, and coaching
       actions (evaluation ticks, feedback). search_activities finds a session when the
       date is unknown. get_activity_window_metrics gives NP/IF/TSS/decoupling for any
-      time window, not just recorded intervals.
+      time window, not just recorded intervals. An activity's intervals can be
+      edited: create_activity_interval carves a named section out of an
+      unstructured ride, update_activity_interval names a detected one. Editing
+      makes intervals.icu stop auto-detecting intervals for that activity, and
+      is visible to the athlete — say so first.
     - **Wellness** — HRV, resting HR, sleep, CTL/ATL/TSB, self-reported readiness and
       nutrition. update_wellness records any of it for a given day.
     - **Gear** — bikes, shoes, components, distance covered and maintenance reminders

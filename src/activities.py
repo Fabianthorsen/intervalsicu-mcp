@@ -3,14 +3,27 @@ from datetime import date, timedelta
 
 import httpx
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
 
 from client import get_client
 from shaping import CORE_FIELDS, project_and_prune, project_and_prune_list, prune
 from curves import format_curve
+from intervals import (
+    IntervalError,
+    IntervalFields,
+    IntervalType,
+    apply_edits,
+    extract_intervals,
+    find_interval,
+    find_section,
+    plan_cuts,
+    shape_intervals,
+)
 from windows import (
     WindowError,
     extract_time_stream,
     format_window_metrics,
+    resolve_boundary,
     resolve_window,
 )
 
@@ -284,19 +297,210 @@ async def get_activity(
 
 
 @activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
-async def get_activity_intervals(ctx: Context, activity_id: str) -> dict:
-    """Get the analysed intervals for a specific activity, including power, HR,
-    pace, TSS, and other metrics per interval.
+async def get_activity_intervals(
+    ctx: Context,
+    activity_id: str,
+    include: list[IntervalFields | str] | None = None,
+) -> dict:
+    """Get the analysed intervals for an activity — power, HR, pace, TSS and
+    load per interval, plus intervals.icu's own grouping of them into reps.
+
+    Returns each interval's `id` and `label`, which is what the interval
+    editing tools address. `start_time` and `end_time` are elapsed seconds from
+    the start of the activity.
 
     Args:
         activity_id: The activity ID (e.g. 'i129230824').
+        include: Field groups — HEADLINE (default), TIMING, POWER, HR, PACE,
+                 CADENCE, ELEVATION, or ALL for the raw payload, which is large.
+    """
+    if include is None:
+        include = ["HEADLINE"]
+
+    include_groups = [
+        (g.value if isinstance(g, IntervalFields) else g).upper() for g in include
+    ]
+
+    client = await get_client(ctx)
+
+    resp = await client.get(f"/activity/{activity_id}/intervals")
+    return shape_intervals(resp.json(), include_groups)
+
+
+@activities.tool(tags={"Activities"})
+async def update_activity_interval(
+    ctx: Context,
+    activity_id: str,
+    interval_id: int,
+    label: str | None = None,
+    interval_type: IntervalType | str | None = None,
+) -> dict:
+    """Name an interval, or change whether it counts as work or recovery.
+
+    Use this to turn auto-detected intervals into something readable — "5min
+    threshold rep 3", "the surge on the climb", "tempo block". Labels show up
+    in the athlete's own intervals.icu view, so they are a way to leave
+    structure behind, not just to annotate one conversation.
+
+    Get interval ids from get_activity_intervals.
+
+    Note: editing an activity's intervals makes intervals.icu treat them as
+    manually curated. It stops re-detecting intervals for that activity, and
+    the change is visible to the athlete. Say so before editing an athlete's
+    session on their behalf.
+
+    Args:
+        activity_id: The activity ID (e.g. 'i129230824').
+        interval_id: The interval's id, from get_activity_intervals.
+        label: New name for the interval. Pass '' to clear an existing label.
+        interval_type: 'WORK' or 'RECOVERY'. Affects how intervals.icu analyses
+                       and groups the interval.
+    """
+    if isinstance(interval_type, IntervalType):
+        interval_type = interval_type.value
+
+    client = await get_client(ctx)
+
+    # Read-modify-write: the PUT replaces the interval, so it has to carry
+    # every field the server already holds, not just the edited ones.
+    current = await client.get(f"/activity/{activity_id}/intervals")
+    intervals = extract_intervals(current.json())
+
+    try:
+        interval = find_interval(intervals, interval_id)
+        edited = apply_edits(interval, label=label, interval_type=interval_type)
+    except IntervalError as exc:
+        raise ToolError(str(exc)) from exc
+
+    await client.put(
+        f"/activity/{activity_id}/intervals/{interval_id}", json=edited
+    )
+
+    resp = await client.get(f"/activity/{activity_id}/intervals")
+    return shape_intervals(resp.json(), ["HEADLINE"])
+
+
+@activities.tool(tags={"Activities"})
+async def create_activity_interval(
+    ctx: Context,
+    activity_id: str,
+    start_seconds: int,
+    end_seconds: int,
+    label: str,
+    interval_type: IntervalType | str = "WORK",
+) -> dict:
+    """Carve a stretch of an activity out as its own named interval.
+
+    This is how an unstructured ride gets sections. A steady Z2 ride arrives as
+    one long interval; carving out 20-40min as "tempo block" leaves three
+    intervals — before, the block, after — each with its own power, HR and
+    decoupling. Repeat for as many sections as the ride deserves.
+
+    Intervals tile the recording end to end, so a section is cut out of its
+    neighbours rather than layered over them: the surrounding riding stays,
+    split around the new interval. Nothing about the ride's data changes, only
+    where the boundaries fall.
+
+    For metrics over a window without editing anything, use
+    get_activity_window_metrics instead.
+
+    Note: this edits the athlete's activity, and the labels are visible to
+    them. intervals.icu stops auto-detecting intervals for an activity once its
+    intervals have been edited. Say so before restructuring someone's session.
+
+    Args:
+        activity_id: The activity ID (e.g. 'i129230824').
+        start_seconds: Section start, in elapsed seconds from the activity
+                       start, including any pauses.
+        end_seconds: Section end, in elapsed seconds. Must be after start.
+        label: Name for the section, e.g. 'tempo block' or 'threshold rep 2'.
+        interval_type: 'WORK' (default) or 'RECOVERY'. Affects how
+                       intervals.icu analyses and groups the interval.
+    """
+    if isinstance(interval_type, IntervalType):
+        interval_type = interval_type.value
+
+    client = await get_client(ctx)
+
+    # split-interval addresses the recording by sample index, not seconds. The
+    # time stream is fetched only to convert; per ADR-0003 none of it is
+    # returned. Both ends resolve against the same stream before any cut,
+    # because an index means the same thing before and after a split.
+    stream_resp = await client.get(
+        f"/activity/{activity_id}/streams.json", params={"types": "time"}
+    )
+    time_stream = extract_time_stream(stream_resp.json())
+
+    try:
+        start_index = resolve_boundary(time_stream, start_seconds)
+        end_index = resolve_boundary(time_stream, end_seconds)
+    except WindowError as exc:
+        raise ToolError(str(exc)) from exc
+
+    current = await client.get(f"/activity/{activity_id}/intervals")
+
+    try:
+        cuts = plan_cuts(extract_intervals(current.json()), start_index, end_index)
+    except IntervalError as exc:
+        raise ToolError(str(exc)) from exc
+
+    for cut in cuts:
+        await client.put(
+            f"/activity/{activity_id}/split-interval", params={"splitAt": cut}
+        )
+
+    cut_resp = await client.get(f"/activity/{activity_id}/intervals")
+
+    try:
+        section = find_section(
+            extract_intervals(cut_resp.json()), start_index, end_index
+        )
+        edited = apply_edits(section, label=label, interval_type=interval_type)
+    except IntervalError as exc:
+        raise ToolError(str(exc)) from exc
+
+    await client.put(
+        f"/activity/{activity_id}/intervals/{section['id']}", json=edited
+    )
+
+    resp = await client.get(f"/activity/{activity_id}/intervals")
+    return shape_intervals(resp.json(), ["HEADLINE"])
+
+
+@activities.tool(tags={"Activities"}, annotations={"destructiveHint": True})
+async def delete_activity_intervals(
+    ctx: Context,
+    activity_id: str,
+    interval_ids: list[int],
+) -> dict:
+    """Delete intervals from an activity.
+
+    Removes the named intervals so the surrounding riding is no longer split
+    out — the usual reason being an interval that was cut in the wrong place,
+    or a detected interval that was never really an effort. The ride's own data
+    is untouched; only the interval boundaries drawn over it go away.
+
+    Args:
+        activity_id: The activity ID (e.g. 'i129230824').
+        interval_ids: Ids of the intervals to delete, from
+                      get_activity_intervals.
     """
     client = await get_client(ctx)
 
-    resp = await client.get(
-        f"/activity/{activity_id}/intervals"
+    current = await client.get(f"/activity/{activity_id}/intervals")
+    intervals = extract_intervals(current.json())
+
+    try:
+        doomed = [find_interval(intervals, i) for i in interval_ids]
+    except IntervalError as exc:
+        raise ToolError(str(exc)) from exc
+
+    await client.put(
+        f"/activity/{activity_id}/delete-intervals", json=doomed
     )
-    return resp.json()
+
+    resp = await client.get(f"/activity/{activity_id}/intervals")
+    return shape_intervals(resp.json(), ["HEADLINE"])
 
 
 @activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
