@@ -14,6 +14,7 @@ import client as _client
 from client import HTTPErrorMiddleware, build_client
 from activities import activities
 from athletes import athletes
+from chats import chats
 from events import events
 from gear import gear
 from library import library
@@ -171,6 +172,7 @@ mcp.mount(events)
 mcp.mount(gear)
 mcp.mount(wellness)
 mcp.mount(library)
+mcp.mount(chats)
 
 
 
