@@ -134,17 +134,18 @@ def resolve_section(
 ) -> tuple[int, int]:
     """Map a time range to the index boundaries that carve it out as an interval.
 
-    Note the convention differs from resolve_window. interval-stats treats
-    end_index as the last sample *in* the window; an interval's end_index is
-    the first sample *after* it — every interval satisfies
-    elapsed_time == end_index - start_index, and the last one ends at
-    len(stream), one past the final sample. So the end resolves with
-    bisect_right, not bisect_left, or the section comes out a sample short and
-    a section running to the finish leaves a sliver behind.
+    ``end_seconds`` is exclusive, because that is how intervals.icu models an
+    interval: its intervals tile the recording, one's end_index being the
+    next's start_index, and every one satisfies
+    elapsed_time == end_index - start_index. Verified against a real activity —
+    interval-stats over indices 13-593 returns exactly the interval recorded as
+    13-593, 580 seconds long. So a section of 1200-2400 lasts exactly 1200s and
+    2400-3600 continues from it seamlessly, with no gap and no overlap.
 
-    Both ends of the recording are accepted: a section can legitimately begin
-    at 0:00 or run to the end, where the boundary already exists and no cut is
-    needed.
+    The final sample is the exception. The last index is len(stream), one past
+    time_stream[-1], so a section asked to run to the end of the ride would
+    stop one sample short and leave a sliver behind. An end at or past the last
+    recorded second therefore clamps to the end of the stream.
 
     Raises:
         WindowError: if the range is inverted or falls outside the recording.
@@ -172,6 +173,10 @@ def resolve_section(
             f"which runs 0-{duration}s."
         )
 
-    return bisect_left(time_stream, start_seconds), bisect_right(
-        time_stream, end_seconds
+    start_index = bisect_left(time_stream, start_seconds)
+    end_index = (
+        len(time_stream)
+        if end_seconds >= duration
+        else bisect_left(time_stream, end_seconds)
     )
+    return start_index, end_index

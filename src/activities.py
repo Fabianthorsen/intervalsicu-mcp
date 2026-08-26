@@ -412,9 +412,10 @@ async def create_activity_interval(
         activity_id: The activity ID (e.g. 'i129230824').
         start_seconds: Section start, in elapsed seconds from the activity
                        start, including any pauses.
-        end_seconds: Section end, in elapsed seconds, inclusive — a section of
-                     1200-2400 covers the second at 2400 too. Must be after
-                     start_seconds.
+        end_seconds: Section end, in elapsed seconds, exclusive — a section of
+                     1200-2400 lasts exactly 1200s, and a following section
+                     starting at 2400 continues from it with no gap. Must be
+                     after start_seconds.
         label: Name for the section, e.g. 'tempo block' or 'threshold rep 2'.
         interval_type: 'WORK' (default) or 'RECOVERY'. Affects how
                        intervals.icu analyses and groups the interval.

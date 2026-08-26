@@ -146,25 +146,32 @@ def test_an_edit_that_changes_nothing_is_rejected() -> None:
         apply_edits(_interval())
 
 
-def test_section_ends_are_exclusive_indices() -> None:
-    """An interval's end_index is one past its last sample: elapsed == end - start.
-
-    bisect_left on the end would cut the section a second short.
-    """
+def test_a_sections_duration_is_exactly_what_was_asked_for() -> None:
+    """Verified against i179293086: indices 13-593 are the 580s interval 13-593."""
     start, end = resolve_section(ONE_HZ, 1200, 2400)
-    assert (start, end) == (1200, 2401)
-    assert end - start == 2400 - 1200 + 1
+    assert (start, end) == (1200, 2400)
+    assert end - start == 1200
+
+
+def test_consecutive_sections_tile_without_gap_or_overlap() -> None:
+    """intervals.icu's own intervals share a boundary; carved ones must too."""
+    _, first_end = resolve_section(ONE_HZ, 1200, 2400)
+    second_start, _ = resolve_section(ONE_HZ, 2400, 3000)
+    assert first_end == second_start
 
 
 def test_cut_points_resolve_through_the_time_stream() -> None:
     """Smart recording: 1200s is index 300, not index 1200."""
-    assert resolve_section(SMART, 1200, 2400)[0] == 300
+    assert resolve_section(SMART, 1200, 2400) == (300, 600)
+
+
+def test_a_section_running_to_the_end_reaches_the_final_sample() -> None:
+    """time_stream[-1] is 3599 but the last boundary is 3600, or a sliver is left."""
+    assert resolve_section(ONE_HZ, 1200, 3599) == (1200, len(ONE_HZ))
 
 
 def test_a_section_may_span_the_whole_recording() -> None:
-    """Both ends already exist as boundaries, so this needs no cut at all."""
-    start, end = resolve_section(ONE_HZ, 0, 3599)
-    assert (start, end) == (0, len(ONE_HZ))
+    assert resolve_section(ONE_HZ, 0, 3599) == (0, len(ONE_HZ))
 
 
 def test_a_section_past_the_end_is_refused() -> None:
