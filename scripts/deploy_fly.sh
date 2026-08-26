@@ -14,15 +14,34 @@ cd "$REPO_ROOT"
 bold() { printf '\033[1m%s\033[0m\n' "$1"; }
 fail() { printf 'error: %s\n' "$1" >&2; exit 1; }
 
+# Strip control characters and surrounding whitespace. Pasting a client ID or
+# secret into a terminal can smuggle in invisible bytes (a literal Ctrl-V shows
+# up as \x16); Fly stores them happily and GitHub then 404s on an authorize URL
+# whose client_id looks correct in every log and settings page.
+scrub() {
+  local __clean
+  __clean=$(printf '%s' "$1" | tr -d '[:cntrl:]')
+  __clean="${__clean#"${__clean%%[![:space:]]*}"}"
+  __clean="${__clean%"${__clean##*[![:space:]]}"}"
+  printf '%s' "$__clean"
+}
+
 ask() { # ask VAR "prompt" [default]
-  local __var=$1 __prompt=$2 __default=${3:-} __reply
-  if [[ -n $__default ]]; then
-    read -r -p "$__prompt [$__default]: " __reply
-    __reply=${__reply:-$__default}
-  else
-    while [[ -z ${__reply:-} ]]; do read -r -p "$__prompt: " __reply; done
+  local __var=$1 __prompt=$2 __default=${3:-} __reply __scrubbed
+  while :; do
+    if [[ -n $__default ]]; then
+      read -r -p "$__prompt [$__default]: " __reply
+      __reply=${__reply:-$__default}
+    else
+      read -r -p "$__prompt: " __reply
+    fi
+    __scrubbed=$(scrub "$__reply")
+    [[ -n $__scrubbed ]] && break
+  done
+  if [[ $__scrubbed != "$__reply" ]]; then
+    echo "note  stripped stray whitespace or control characters from the input"
   fi
-  printf -v "$__var" '%s' "$__reply"
+  printf -v "$__var" '%s' "$__scrubbed"
 }
 
 confirm() {
