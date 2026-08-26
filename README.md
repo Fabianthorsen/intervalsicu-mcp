@@ -8,24 +8,47 @@ An [MCP](https://modelcontextprotocol.io) server that exposes [intervals.icu](ht
 - [uv](https://docs.astral.sh/uv/)
 - An intervals.icu account with an API key
 
-## Local setup (stdio)
+Runs on macOS, Linux and Windows. The deployment script (`scripts/deploy_fly.sh`) needs
+a bash shell, so on Windows run it under WSL or Git Bash — or follow the secrets table
+in that section by hand.
 
-1. Clone the repo and install dependencies:
-   ```bash
-   git clone https://github.com/your-username/intervalsicu-mcp
-   cd intervalsicu-mcp
-   uv sync
-   ```
+## Quick start
 
-2. Create a `.env` file in the project root:
-   ```
-   INTERVALS_API_KEY=your_api_key_here
-   ```
-   Your API key is found in intervals.icu under **Settings → API**.
+```bash
+git clone git@github.com:Fabianthorsen/intervalsicu-mcp.git
+cd intervalsicu-mcp
+uv sync                                    # creates .venv, installs everything
+uv run python scripts/check_setup.py       # creates .env, then tells you what is missing
+```
+
+The first run creates `.env` and stops, because the API key is blank. Paste your key —
+it is at intervals.icu under **Settings → Developer Settings** — and run the check again.
+
+`check_setup.py` verifies the key is set, that intervals.icu accepts it, and that the
+server imports with every tool mounted. It then prints the config for the two clients
+below **with your absolute paths already filled in**, ready to paste.
+
+No GitHub OAuth credentials are needed for a local run — auth only switches on for the
+remote deployment, when those variables are present.
+
+### Claude Code
+
+Run the command `check_setup.py` prints, which is this with real paths:
+
+```bash
+claude mcp add intervals-icu -- /path/to/uv --directory /path/to/intervalsicu-mcp run python src/server.py
+```
+
+Note that the checked-in `.mcp.json` points at the maintainer's hosted server on Fly.io,
+which is restricted to an allowlist of GitHub users. Use the command above to run your
+own local copy instead.
 
 ### Claude Desktop
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Merge the JSON `check_setup.py` prints into your `claude_desktop_config.json`, then
+restart Claude Desktop. The script prints the path for your OS; it is
+`~/Library/Application Support/Claude/` on macOS, `%APPDATA%\Claude\` on Windows, and
+`~/.config/Claude/` on Linux. The JSON looks like this:
 
 ```json
 {
@@ -41,69 +64,61 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
-Restart Claude Desktop after saving.
+Both paths must be absolute — Claude Desktop does not inherit your shell PATH, so a bare
+`uv` fails with `command not found`. That is why the script resolves them for you (on
+Windows that means the full `...\uv.exe` path, correctly escaped for JSON).
 
-### Claude Code
+## Troubleshooting
 
-```bash
-claude mcp add intervals-icu -- uv --directory /path/to/intervalsicu-mcp run python src/server.py
-```
+| Symptom | Cause and fix |
+| --- | --- |
+| `KeyError: 'INTERVALS_API_KEY'` or every test skips | No `.env` in the project root, or the key line is empty. |
+| `401`/`403` from intervals.icu | Key is wrong or revoked — generate a new one under Settings → Developer Settings. |
+| Redirect to `blocked.*` / `CERTIFICATE_VERIFY_FAILED` | A corporate proxy is blocking or TLS-intercepting intervals.icu. Try another network; the test suite already uses `truststore` so the OS keychain supplies intercepting root CAs. |
+| `uv: command not found` in Claude Desktop | Use the absolute path (`which uv`, or `where uv` on Windows) — `check_setup.py` prints it for you. |
+| `deploy_fly.sh: command not found` on Windows | It is a bash script — run it under WSL or Git Bash, or set the secrets by hand. |
 
 ## Remote deployment (Fly.io + GitHub OAuth)
 
-The server supports a remote HTTP deployment with GitHub OAuth so you can restrict access to specific GitHub users.
-
-### 1. Create a GitHub OAuth App
-
-Go to GitHub → Settings → Developer settings → OAuth Apps → New OAuth App:
-- **Homepage URL:** `https://your-app-name.fly.dev`
-- **Authorization callback URL:** `https://your-app-name.fly.dev/auth/github/callback`
-
-### 2. Generate a JWT signing key
+The server can also run as a remote HTTP deployment behind GitHub OAuth, so only an
+allowlist of GitHub users can connect.
 
 ```bash
-openssl rand -hex 32
-```
-
-### 3. Create the Fly.io app
-
-```bash
-brew install flyctl   # or see https://fly.io/docs/hands-on/install-flyctl/
+brew install flyctl   # macOS; other platforms: https://fly.io/docs/flyctl/install/
 fly auth login
-fly apps create your-app-name
+./scripts/deploy_fly.sh
 ```
 
-Update the `app` field in `fly.toml` if you changed the name.
+The script creates the app and its volume, prints the exact Homepage and callback URLs
+to paste into a new GitHub OAuth App, generates a `JWT_SIGNING_KEY`, sets every secret,
+and deploys. It keeps the app name consistent across `fly.toml`, the callback URL and
+`PUBLIC_BASE_URL` — a mismatch there is the usual cause of a failing OAuth round-trip.
 
-### 4. Set secrets
+It is safe to re-run: existing apps, volumes and signing keys are left alone (rotating
+the signing key would invalidate every issued token), and nothing is created or deployed
+until you confirm. Re-run it to change the allowlist.
 
-```bash
-fly secrets set \
-  INTERVALS_API_KEY=your_intervals_api_key \
-  GITHUB_CLIENT_ID=your_github_client_id \
-  GITHUB_CLIENT_SECRET=your_github_client_secret \
-  JWT_SIGNING_KEY=your_generated_key \
-  ALLOWED_GITHUB_USERS=yourgithubusername,otherusername
-```
+Once deployed, use `https://your-app-name.fly.dev/mcp` as the MCP server URL in your
+client.
 
-`ALLOWED_GITHUB_USERS` is a comma-separated list of GitHub usernames that are allowed to connect.
+### What it sets, if you prefer doing it by hand
 
-### 5. Deploy
+| Secret | Purpose |
+| --- | --- |
+| `INTERVALS_API_KEY` | intervals.icu API access |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | From the GitHub OAuth App |
+| `JWT_SIGNING_KEY` | `openssl rand -hex 32` |
+| `ALLOWED_GITHUB_USERS` | Comma-separated GitHub usernames allowed to connect |
+| `PUBLIC_BASE_URL` | `https://your-app-name.fly.dev` — must match the OAuth callback host |
 
-```bash
-fly deploy
-```
-
-### 6. Connect to the remote server
-
-Use `https://your-app-name.fly.dev` as the MCP server URL in your client.
+GitHub auth switches on only when `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` and
+`JWT_SIGNING_KEY` are all set. To keep a missing secret from quietly exposing the
+server, it refuses to start on a network transport unless all three are present.
 
 ### Automated deployment via GitHub Actions
 
-Pushing to `main` triggers automatic deployment. Add your Fly.io token as a repository secret:
-
-- Secret name: `FLY_API_TOKEN`
-- Get the token: `fly tokens create deploy`
+Pushing to `main` deploys automatically. Add your Fly token as the repository secret
+`FLY_API_TOKEN`, from `fly tokens create deploy`.
 
 ## Tools
 
@@ -204,15 +219,17 @@ Analyse a workout and post feedback. Follow these steps in order:
 
 If you use Claude Code (CLI), save the prompt above as `~/.claude/commands/review-workout.md` for a `/review-workout latest` slash command available in every project.
 
-## Running Tests
+## Development
 
 ```bash
-uv run pytest tests/ -v
+uv run pytest tests/ -v                                        # full suite
+uv run pytest tests/test_shaping.py tests/test_curves.py -v    # pure units, no network
+uv run mypy src
 ```
 
 Unit tests for the pure modules (`shaping`, `curves`, `windows`, taxonomies) run offline with no
-credentials. Integration tests hit the real API and need `INTERVALS_API_KEY` in `.env`; write tests
-clean up after themselves.
+credentials. Integration tests hit the real API, skip automatically when `INTERVALS_API_KEY` is
+unset, and clean up after themselves.
 
 `tests/test_taxonomy_fields.py` checks every field group against `openapi-spec.json`. Field groups are
 hand-written, and a name that does not exist on the schema prunes to nothing at runtime — the tool
@@ -220,3 +237,6 @@ looks sparse rather than broken. Run it after editing any taxonomy.
 
 If requests fail TLS verification behind a corporate proxy, `conftest.py` injects `truststore` so
 Python uses the OS trust store instead of certifi's bundle.
+
+Further reading: `CLAUDE.md` for commit conventions and how to add a new tool, `CONTEXT.md` for the
+domain glossary, and `docs/adr/` for the design decisions behind the tool layout and response shaping.
