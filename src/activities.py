@@ -63,7 +63,6 @@ ACTIVITY_TAXONOMY = {
         "polarization_index",
         "icu_efficiency_factor",
         "power_load",
-        "power_load_type",
         "icu_joules",
         "icu_joules_above_ftp",
         "avg_lr_balance",

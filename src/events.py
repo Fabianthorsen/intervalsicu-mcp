@@ -23,7 +23,6 @@ class EventFields(enum.Enum):
 EVENT_TAXONOMY = {
     "HEADLINE": [
         "name",
-        "start_date_local",
         "category",
         "type",
         "moving_time",
@@ -31,26 +30,30 @@ EVENT_TAXONOMY = {
         "icu_training_load",
     ],
     "TARGETS": [
+        "target",
         "load_target",
         "time_target",
         "distance_target",
-        "power_target",
-        "hr_target",
-        "pace_target",
-        "target",
-        "targets",
+        "icu_intensity",
+        "icu_ftp",
+        "carbs_per_hour",
+        "max_training_time",
     ],
     "COACHING": [
         "description",
         "tags",
-        "visibility",
         "hide_from_athlete",
+        "athlete_cannot_edit",
+        "show_as_note",
     ],
     "METADATA": [
         "color",
         "indoor",
-        "paired_event_id",
         "sub_type",
+        "external_id",
+        "updated",
+        "created_by_id",
+        "plan_applied",
     ],
 }
 

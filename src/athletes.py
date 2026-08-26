@@ -20,42 +20,51 @@ class AthleteFields(enum.Enum):
 ATHLETE_TAXONOMY = {
     "HEADLINE": [
         "name",
-        "weight",
-        "ftp",
-        "restingHR",
-        "timezone",
-        "gender",
+        "firstname",
+        "sex",
+        "city",
         "country",
+        "timezone",
+        "icu_weight",
+        "icu_resting_hr",
     ],
-    "ZONES": [
-        "power_zone_1_start",
-        "power_zone_2_start",
-        "power_zone_3_start",
-        "power_zone_4_start",
-        "power_zone_5_start",
-        "power_zone_6_start",
-        "power_zone_7_start",
-        "hr_zone_1_start",
-        "hr_zone_2_start",
-        "hr_zone_3_start",
-        "hr_zone_4_start",
-        "hr_zone_5_start",
-        "lthr",
-        "threshold_pace",
-        "pace_zone_1_start",
-        "pace_zone_2_start",
-        "pace_zone_3_start",
-        "pace_zone_4_start",
-        "pace_zone_5_start",
-    ],
+    # Thresholds and zones are per-sport and live in the embedded `sportSettings`
+    # array, not on the athlete itself — there is no top-level `ftp`. ZONES is
+    # therefore assembled by _summarize_sport_settings rather than projected.
+    "ZONES": ["sportSettings"],
     "METADATA": [
-        "created",
-        "last_update",
-        "notes",
+        "icu_date_of_birth",
         "locale",
-        "use_metric",
+        "measurement_preference",
+        "weight_pref_lb",
+        "icu_last_seen",
+        "icu_activated",
+        "icu_coach",
     ],
 }
+
+# Threshold fields worth summarising per sport. Full zone boundaries are left to
+# get_sport_settings — this is the "what are her numbers" view.
+_THRESHOLD_FIELDS = ("ftp", "indoor_ftp", "lthr", "max_hr", "threshold_pace", "w_prime")
+
+
+def _summarize_sport_settings(settings: list[dict]) -> list[dict]:
+    """Reduce the sportSettings array to a per-sport threshold summary.
+
+    Each entry covers a group of activity types (e.g. Ride/GravelRide/VirtualRide).
+    Entries with no thresholds set at all are dropped rather than returned empty.
+    """
+    summary = []
+    for entry in settings:
+        thresholds = {
+            f: entry[f]
+            for f in _THRESHOLD_FIELDS
+            if entry.get(f) is not None
+        }
+        if not thresholds:
+            continue
+        summary.append({"types": entry.get("types", []), **thresholds})
+    return summary
 
 
 @athletes.tool(tags={"Athletes"}, annotations={"readOnlyHint": True})
@@ -73,7 +82,7 @@ async def get_athlete(
         include = ["HEADLINE"]
 
     include_groups = [
-        g.value if isinstance(g, AthleteFields) else g
+        (g.value if isinstance(g, AthleteFields) else g).upper()
         for g in include
     ]
 
@@ -81,7 +90,16 @@ async def get_athlete(
     data = await client.get(f"/athlete/{athlete_id}")
     obj = data.json()
 
-    return project_and_prune(obj, include_groups, ATHLETE_TAXONOMY)
+    shaped = project_and_prune(obj, include_groups, ATHLETE_TAXONOMY)
+
+    # Replace the raw sportSettings array with the threshold summary. ALL is a
+    # deliberate raw passthrough, so leave it untouched there.
+    if "ZONES" in include_groups and "ALL" not in include_groups:
+        summary = _summarize_sport_settings(shaped.pop("sportSettings", []))
+        if summary:
+            shaped["sport_thresholds"] = summary
+
+    return shaped
 
 
 @athletes.tool(tags={"Athletes"}, annotations={"readOnlyHint": True})

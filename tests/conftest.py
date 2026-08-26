@@ -5,6 +5,13 @@ from typing import AsyncGenerator
 
 import httpx
 import pytest
+import truststore
+
+# Use the OS trust store rather than certifi's bundle. Behind a TLS-intercepting
+# corporate proxy the root CA lives in the system keychain only, so certifi-based
+# verification fails where curl succeeds. Test-time only — the Fly deployment
+# sits behind no such proxy.
+truststore.inject_into_ssl()
 
 
 @pytest.fixture
