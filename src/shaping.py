@@ -47,10 +47,17 @@ def project_and_prune_list(
     return [project_and_prune(item, include, taxonomy) for item in items]
 
 
-def _prune(obj: dict) -> dict:
-    """Remove empty values: null, [], '', {}. Keep 0 and False."""
+def prune(obj: dict) -> dict:
+    """Remove empty values: null, [], '', {}. Keep 0 and False.
+
+    Public because some endpoints already return a purpose-built summary that
+    needs no projection — only empties dropped.
+    """
     return {
         k: v
         for k, v in obj.items()
         if v is not None and v != [] and v != "" and v != {}
     }
+
+
+_prune = prune

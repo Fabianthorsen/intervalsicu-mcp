@@ -5,7 +5,7 @@ import httpx
 from fastmcp import Context, FastMCP
 
 from client import get_client
-from shaping import project_and_prune, project_and_prune_list
+from shaping import CORE_FIELDS, project_and_prune, project_and_prune_list, prune
 from curves import format_curve
 from windows import (
     WindowError,
@@ -208,6 +208,15 @@ ACTIVITY_TAXONOMY = {
 }
 
 
+# Field list sent to the API for list calls: the HEADLINE group plus the core
+# fields that ship unconditionally. Every name is verified against the Activity
+# schema by tests/test_taxonomy_fields.py, so this cannot request a field that
+# does not exist.
+_HEADLINE_FIELDS_PARAM = ",".join(
+    sorted(CORE_FIELDS | set(ACTIVITY_TAXONOMY["HEADLINE"]))
+)
+
+
 @activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
 async def list_activities_between_dates(
     ctx: Context,
@@ -232,7 +241,13 @@ async def list_activities_between_dates(
     data = await client.get(
         f"/athlete/{athlete_id}/activities",
         params=httpx.QueryParams(
-            oldest=from_date.isoformat(), newest=to_date.isoformat()
+            oldest=from_date.isoformat(),
+            newest=to_date.isoformat(),
+            # Project server-side as well as locally. An Activity carries ~200
+            # fields and shaping discards nearly all of them, so asking for the
+            # dozen we keep avoids pulling the rest over the wire. Output is
+            # unchanged — project_and_prune_list still has the final say.
+            fields=_HEADLINE_FIELDS_PARAM,
         ),
     )
     records = data.json()
@@ -512,3 +527,36 @@ async def get_activity_window_metrics(
         },
         "metrics": metrics,
     }
+
+
+@activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
+async def search_activities(
+    ctx: Context,
+    query: str,
+    athlete_id: str = "0",
+    limit: int = 20,
+) -> list:
+    """Find activities by name or tag, across the athlete's whole history.
+
+    Use this when the date is unknown — "find her Alpe du Zwift attempts" or
+    "when did he last do a ramp test". For a known date range,
+    list_activities_between_dates is cheaper.
+
+    Args:
+        query: Name to search for, case-insensitive and matched as a substring.
+               Prefix with '#' to match a tag exactly, e.g. '#race'.
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+        limit: Maximum number of activities to return (default 20).
+    """
+    client = await get_client(ctx)
+
+    resp = await client.get(
+        f"/athlete/{athlete_id}/activities/search",
+        params=httpx.QueryParams(q=query, limit=limit),
+    )
+    results = resp.json()
+
+    # The search endpoint returns a purpose-built summary (name, date, type,
+    # distance, moving_time, tags, race, description) rather than a full
+    # Activity, so there is nothing to project — only empties to drop.
+    return [prune(item) for item in results]
