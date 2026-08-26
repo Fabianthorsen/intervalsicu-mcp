@@ -7,6 +7,12 @@ from fastmcp import Context, FastMCP
 from client import get_client
 from shaping import project_and_prune, project_and_prune_list
 from curves import format_curve
+from windows import (
+    WindowError,
+    extract_time_stream,
+    format_window_metrics,
+    resolve_window,
+)
 
 activities = FastMCP("activities")
 
@@ -250,7 +256,7 @@ async def get_activity(
         include = ["HEADLINE"]
 
     include_groups = [
-        g.value if isinstance(g, ActivityFields) else g
+        (g.value if isinstance(g, ActivityFields) else g).upper()
         for g in include
     ]
 
@@ -442,4 +448,67 @@ async def get_activity_curve(
         "metric": metric,
         "curve": formatted,
         "weight": weight,
+    }
+
+
+@activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
+async def get_activity_window_metrics(
+    ctx: Context,
+    activity_id: str,
+    start_seconds: int,
+    end_seconds: int,
+) -> dict:
+    """Get power, HR and load metrics for any time window within an activity.
+
+    Answers questions the recorded intervals do not, such as "how did the last
+    hour of that ride compare to the first" or "what did she average between
+    40 and 60 minutes". The window is arbitrary — it need not line up with laps
+    or intervals.
+
+    Returns normalized and average power, variability index, intensity factor,
+    TSS, decoupling, average HR and cadence for the window. All of it is
+    computed by intervals.icu, not derived from raw samples.
+
+    Times are elapsed seconds from the start of the activity, including any
+    pauses. Use get_activity for the activity's total duration.
+
+    Args:
+        activity_id: The activity ID (e.g. 'i129230824').
+        start_seconds: Window start, in elapsed seconds from the activity start.
+        end_seconds: Window end, in elapsed seconds. Must be after start_seconds.
+    """
+    client = await get_client(ctx)
+
+    # The time stream maps sample index to elapsed second. It is needed because
+    # interval-stats addresses windows by index, and index only equals second
+    # for an unpaused 1Hz recording. Fetched here and discarded — per ADR-0003
+    # no part of it is returned to the caller.
+    stream_resp = await client.get(
+        f"/activity/{activity_id}/streams.json", params={"types": "time"}
+    )
+    time_stream = extract_time_stream(stream_resp.json())
+
+    try:
+        start_index, end_index = resolve_window(time_stream, start_seconds, end_seconds)
+    except WindowError as exc:
+        return {
+            "activity_id": activity_id,
+            "requested_window": {"start_seconds": start_seconds, "end_seconds": end_seconds},
+            "error": str(exc),
+            "metrics": None,
+        }
+
+    stats_resp = await client.get(
+        f"/activity/{activity_id}/interval-stats",
+        params={"start_index": start_index, "end_index": end_index},
+    )
+    metrics = format_window_metrics(stats_resp.json())
+
+    return {
+        "activity_id": activity_id,
+        "window": {
+            "start_seconds": time_stream[start_index],
+            "end_seconds": time_stream[end_index],
+        },
+        "metrics": metrics,
     }

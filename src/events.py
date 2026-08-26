@@ -105,7 +105,7 @@ async def get_event(
         include = ["HEADLINE"]
 
     include_groups = [
-        g.value if isinstance(g, EventFields) else g
+        (g.value if isinstance(g, EventFields) else g).upper()
         for g in include
     ]
 
@@ -134,7 +134,7 @@ async def get_training_plan(
         include = ["HEADLINE"]
 
     include_groups = [
-        g.value if isinstance(g, EventFields) else g
+        (g.value if isinstance(g, EventFields) else g).upper()
         for g in include
     ]
 
