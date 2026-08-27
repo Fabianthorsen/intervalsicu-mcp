@@ -86,8 +86,11 @@ mcp = FastMCP(
       unstructured ride, update_activity_interval names a detected one. Editing
       makes intervals.icu stop auto-detecting intervals for that activity, and
       is visible to the athlete — say so first. update_activity corrects an
-      activity's name, description or sport type; type is what decides which
-      sport settings its load is computed against.
+      activity's name, description, sport type, RPE, feel and tags; type is what
+      decides which sport settings its load is computed against. Tags are added
+      and removed, never replaced — check list_activity_tags first, because
+      search_activities matches tags exactly and a near-duplicate splits a set
+      of sessions in two.
     - **Wellness** — HRV, resting HR, sleep, CTL/ATL/TSB, self-reported readiness and
       nutrition. update_wellness records any of it for a given day.
     - **Gear** — bikes, shoes, components, distance covered and maintenance reminders
@@ -97,6 +100,14 @@ mcp = FastMCP(
       and create_events lays out a whole week in one call.
     - **Workout Library** — folders and structured workouts. list_workout_folders nests
       workouts under each folder as 'children'.
+    - **Analysis** — three tools that reduce a block of training to numbers rather
+      than returning sessions to read. get_load_summary answers "how much, of
+      what, how hard" (load, duration, sport split, intensity split, by week or
+      month). compare_block answers "did it match the plan" (prescribed versus
+      actual per session, missed and unplanned sessions, zone adherence).
+      project_fitness answers "where does this leave me" (CTL/ATL/TSB forward
+      over planned work, with hypotheticals). Reach for these instead of pulling
+      a month of activities and adding them up.
     - **Chats** — the standing coach/athlete conversation. Separate from
       post_activity_message, which comments on one session. Sending is limited to
       one-to-one chats.
@@ -126,6 +137,21 @@ mcp = FastMCP(
     sessions of that type actually cost. Do not set load_target by hand to work around
     a missing spec. This needs the sport's settings group to have an LTHR; if the
     planned load comes back as zero, check get_sport_settings.
+
+    ## Reading projections and comparisons
+    project_fitness labels every day with where its numbers came from: 'platform'
+    means intervals.icu supplied them and they match the fitness chart,
+    'extrapolated' means the tool computed them, 'hypothetical' means an overlay
+    applies — and an overlay applies to every day from the first change onward.
+    Days flagged load_is_estimated rest on a load someone typed in rather than one
+    derived from structured steps; treat them as softer. The overlay never writes
+    to the calendar, and its echo says what each entry did — an entry whose date
+    matches nothing becomes an added session, so check it.
+
+    compare_block's adherence returns two percentages. under_ceiling_pct is the
+    discipline number; in_band_pct also counts descents and stops as misses. Quote
+    both — alone, either one hides a failure mode. Each session is scored against
+    its own zones, so when the ceiling moved mid-block the pooled result says so.
 
     ## Changing an athlete's numbers
     update_sport_settings affects future analysis only and is safe to correct.

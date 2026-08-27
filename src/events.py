@@ -5,6 +5,14 @@ from typing import TypedDict
 import httpx
 from fastmcp import Context, FastMCP
 
+from blocks import (
+    ATL_DAYS,
+    CTL_DAYS,
+    apply_overlay,
+    date_range,
+    planned_loads,
+    project_fitness_series,
+)
 from client import get_client
 from shaping import project_and_prune, project_and_prune_list
 
@@ -667,4 +675,124 @@ async def create_events(
         )
     else:
         result["message"] = f"{count} events created for athlete {athlete_id}."
+    return result
+
+
+@events.tool(tags={"Analysis"}, annotations={"readOnlyHint": True})
+async def project_fitness(
+    ctx: Context,
+    from_date: str,
+    to_date: str,
+    athlete_id: str = "0",
+    overlay: list[dict] | None = None,
+) -> dict:
+    """Project CTL, ATL and TSB forward over planned training.
+
+    Read-only. Nothing here writes to the calendar, including the overlay.
+
+    Every day is labelled with where its numbers came from. 'platform' means
+    intervals.icu supplied CTL and ATL for that date, so the figure cannot
+    disagree with the fitness chart the athlete is looking at. 'extrapolated'
+    means this tool computed it from planned load. 'hypothetical' means an
+    overlay applies — and applies to every day from the first change onward,
+    since a change carries forward through the series.
+
+    Days whose planned load was typed in rather than derived from structured
+    steps are flagged `load_is_estimated`. Those are softer numbers: an
+    unstructured padel session should not read as firmly as an ERG workout.
+
+    ## Hypotheticals
+
+    `overlay` answers "what if" without touching the calendar. Each entry
+    names a `date`, plus `event_id` when a day holds more than one session:
+
+      - `{"date": "2026-03-14", "skip": true}` — drop that day's session
+      - `{"date": "2026-03-14", "load": 85}` — set the load exactly
+      - `{"date": "2026-03-14", "moving_time": 5400}` — scale load by duration
+      - `{"date": "2026-03-19", "load": 60, "name": "Extra endurance"}` — add a
+        session where none is planned
+
+    Duration scaling assumes the minutes removed were of average intensity.
+    Sessions are usually trimmed from the easy tail instead, so it overstates
+    the saving; those days come back marked approximate. Prefer `load` when
+    you know it.
+
+    The response echoes what each overlay entry did — modified, skipped, added
+    or matched nothing. Check it: a mistyped date becomes an added session
+    rather than an error, and would otherwise hide inside a CTL number.
+
+    Args:
+        from_date: First day to project (ISO-8601).
+        to_date: Last day to project (ISO-8601).
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+        overlay: Optional hypothetical changes — see above. Never written.
+    """
+    start = date.fromisoformat(from_date)
+    end = date.fromisoformat(to_date)
+    days = date_range(start, end)
+
+    client = await get_client(ctx)
+
+    events_resp = await client.get(
+        f"/athlete/{athlete_id}/events",
+        params=httpx.QueryParams(
+            oldest=from_date, newest=to_date, category="WORKOUT,RACE_A,RACE_B,RACE_C"
+        ),
+    )
+    # One day before the range so there is a seed to carry forward from when
+    # the platform has nothing for the first projected day.
+    seed_from = (start - timedelta(days=1)).isoformat()
+    wellness_resp = await client.get(
+        f"/athlete/{athlete_id}/wellness",
+        params=httpx.QueryParams(
+            oldest=seed_from, newest=to_date, fields="id,ctl,atl"
+        ),
+    )
+
+    rows = wellness_resp.json()
+    platform = {
+        r["id"]: r
+        for r in rows
+        if isinstance(r, dict) and r.get("id")
+    }
+
+    seed = platform.get(seed_from) or {}
+    if seed.get("ctl") is None:
+        # Fall back to the most recent row at or before the range start.
+        earlier = [
+            r for key, r in sorted(platform.items())
+            if key <= seed_from and r.get("ctl") is not None
+        ]
+        seed = earlier[-1] if earlier else {}
+
+    plan = planned_loads(events_resp.json())
+    plan, echo = apply_overlay(plan, overlay)
+    overlaid = {e["date"] for e in echo if e.get("action") in ("modified", "skipped", "added")}
+
+    series = project_fitness_series(
+        days,
+        plan,
+        seed_ctl=seed.get("ctl") or 0,
+        seed_atl=seed.get("atl") or 0,
+        platform=platform,
+        overlaid_dates=overlaid,
+        ctl_days=CTL_DAYS,
+        atl_days=ATL_DAYS,
+    )
+
+    result: dict = {
+        "from_date": from_date,
+        "to_date": to_date,
+        "seed": {"ctl": seed.get("ctl"), "atl": seed.get("atl"), "date": seed_from},
+        "days": series,
+    }
+    if echo:
+        result["overlay"] = echo
+    if not any(d["source"] == "platform" for d in series):
+        # Nothing came back from the platform for this range, so every number
+        # here is ours. Say so rather than let it pass as the fitness chart.
+        result["warning"] = (
+            "intervals.icu returned no CTL/ATL for these dates, so every value is "
+            "computed by this tool and may differ from the fitness chart."
+        )
     return result
