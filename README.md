@@ -96,6 +96,9 @@ thing:
 uv run python scripts/deploy_fly.py
 ```
 
+Add `--dry-run` to walk the whole flow and see every value and command without
+creating, changing or deploying anything.
+
 The script creates the app and its volume, prints the exact Homepage and callback URLs
 to paste into a new GitHub OAuth App, generates a `JWT_SIGNING_KEY`, sets every secret,
 and deploys. It keeps the app name consistent across `fly.toml`, the callback URL and

@@ -2,6 +2,10 @@
 
 Run with: uv run python scripts/deploy_fly.py
 
+Pass --dry-run to walk the whole flow and see every value and command without
+creating, changing or deploying anything. Read-only flyctl calls still run, so
+what it reports about the app is real.
+
 Safe to re-run: it skips anything that already exists and re-prompts only for
 what is missing. Nothing is created or deployed until you confirm.
 
@@ -59,8 +63,27 @@ def confirm(question: str) -> bool:
     return input(f"{question} [y/N]: ").strip().lower() == "y"
 
 
-def fly(*args: str, capture: bool = False) -> subprocess.CompletedProcess:
-    """Run flyctl. Errors are the caller's to interpret, so never raise here."""
+DRY_RUN = "--dry-run" in sys.argv
+
+
+def redact(arg: str) -> str:
+    """Hide secret values when echoing a command."""
+    for name in ("INTERVALS_API_KEY", "GITHUB_CLIENT_SECRET", "JWT_SIGNING_KEY"):
+        if arg.startswith(f"{name}="):
+            return f"{name}=***"
+    return arg
+
+
+def fly(*args: str, capture: bool = False, mutating: bool = True) -> subprocess.CompletedProcess:
+    """Run flyctl. Errors are the caller's to interpret, so never raise here.
+
+    Under --dry-run, commands that change something are printed instead of run.
+    Read-only ones still execute, so the dry run reports the real state of the
+    app rather than a guess about it.
+    """
+    if DRY_RUN and mutating:
+        print("dry   would run: flyctl " + " ".join(redact(a) for a in args))
+        return subprocess.CompletedProcess(args, 0, "", "")
     return subprocess.run(
         ["flyctl", *args],
         capture_output=capture,
@@ -70,7 +93,7 @@ def fly(*args: str, capture: bool = False) -> subprocess.CompletedProcess:
 
 
 def fly_value(*args: str) -> str:
-    result = fly(*args, capture=True)
+    result = fly(*args, capture=True, mutating=False)
     return result.stdout if result.returncode == 0 else ""
 
 
@@ -88,6 +111,8 @@ def main() -> int:
     if not whoami:
         fail("Not logged in to Fly. Run: fly auth login")
     bold(f"Fly account: {whoami}")
+    if DRY_RUN:
+        bold("Dry run: nothing will be created, changed or deployed.")
 
     current_app = toml_value(r'^app *= *"(.*)"')
     region = toml_value(r'^primary_region *= *"(.*)"')
@@ -104,10 +129,13 @@ def main() -> int:
     if app != current_app:
         if not confirm(f"Rewrite fly.toml app name from '{current_app}' to '{app}'?"):
             fail("fly.toml must name the app you are deploying to.")
-        FLY_TOML.write_text(
-            re.sub(r'^app *= *".*"', f'app = "{app}"', FLY_TOML.read_text(), count=1, flags=re.MULTILINE)
-        )
-        print(f"ok    fly.toml now targets {app}")
+        if DRY_RUN:
+            print(f"dry   would rewrite fly.toml app name to {app}")
+        else:
+            FLY_TOML.write_text(
+                re.sub(r'^app *= *".*"', f'app = "{app}"', FLY_TOML.read_text(), count=1, flags=re.MULTILINE)
+            )
+            print(f"ok    fly.toml now targets {app}")
 
     # Match the first column only: an app name can otherwise collide with an
     # org or region printed further along the same row.
@@ -204,7 +232,7 @@ def main() -> int:
     if confirm("Deploy now?"):
         fly("deploy", "-a", app)
         print()
-        bold(f"Deployed. MCP server URL: {base_url}/mcp")
+        bold(f"{'Would deploy' if DRY_RUN else 'Deployed'}. MCP server URL: {base_url}/mcp")
         print(f"Only these GitHub users can connect: {allowed_users}")
     else:
         print(f"Secrets staged. Deploy when ready with: fly deploy -a {app}")
