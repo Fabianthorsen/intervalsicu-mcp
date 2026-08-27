@@ -85,12 +85,16 @@ mcp = FastMCP(
       edited: create_activity_interval carves a named section out of an
       unstructured ride, update_activity_interval names a detected one. Editing
       makes intervals.icu stop auto-detecting intervals for that activity, and
-      is visible to the athlete — say so first.
+      is visible to the athlete — say so first. update_activity corrects an
+      activity's name, description or sport type; type is what decides which
+      sport settings its load is computed against.
     - **Wellness** — HRV, resting HR, sleep, CTL/ATL/TSB, self-reported readiness and
       nutrition. update_wellness records any of it for a given day.
     - **Gear** — bikes, shoes, components, distance covered and maintenance reminders
     - **Calendar & Events** — planned workouts, notes and races; create inline or
-      schedule from the library; training plan
+      schedule from the library; training plan. create_race puts an A/B/C race on
+      the calendar, create_note covers holidays and spells of illness or injury,
+      and create_events lays out a whole week in one call.
     - **Workout Library** — folders and structured workouts. list_workout_folders nests
       workouts under each folder as 'children'.
     - **Chats** — the standing coach/athlete conversation. Separate from
@@ -106,12 +110,22 @@ mcp = FastMCP(
     - Build a library: create_workout_folder, then create_workout_in_folder
     - Schedule from the library: list_workout_folders to find the workout id in
       'children', then schedule_workout
+    - Plan a block: create_events with the whole week's entries — workouts, races
+      and rest notes in one call — rather than one create_workout per day
 
     ## Writing workouts
     Always populate `description`. create_workout's documentation carries the full
-    format, including the Intervals.icu structured-interval syntax for Ride and Run and
-    the prose-only convention for other sports. Follow it for schedule_workout and
-    create_workout_in_folder too.
+    format, including the Intervals.icu structured-interval syntax and the rules on
+    which sports need a spec. Follow it for schedule_workout, create_workout_in_folder
+    and create_events too.
+
+    Planning an unstructured sport (Padel, Football, Tennis, Climbing and similar):
+    intervals.icu derives planned load from the description's structured steps, so a
+    prose-only session plans zero load and never reaches the fitness chart. Give it a
+    minimal spec instead — a duration at an %LTHR range, calibrated from what previous
+    sessions of that type actually cost. Do not set load_target by hand to work around
+    a missing spec. This needs the sport's settings group to have an LTHR; if the
+    planned load comes back as zero, check get_sport_settings.
 
     ## Changing an athlete's numbers
     update_sport_settings affects future analysis only and is safe to correct.

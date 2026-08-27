@@ -507,6 +507,46 @@ async def delete_activity_intervals(
     return shape_intervals(resp.json(), ["HEADLINE"])
 
 
+@activities.tool(tags={"Activities"})
+async def update_activity(
+    ctx: Context,
+    activity_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    type: str | None = None,
+) -> dict:
+    """Correct an activity's name, description or sport type.
+
+    Only the fields you provide are changed. `type` is the consequential one:
+    it decides which sport settings group the activity falls under, and
+    therefore which thresholds and zones its load is computed against. A padel
+    match that arrived from a watch as a generic 'Workout' gets no sensible
+    load until its type is right.
+
+    Changes here are visible to the athlete.
+
+    Args:
+        activity_id: The activity ID (e.g. 'i129230824').
+        name: New activity name.
+        description: New activity description.
+        type: Sport type (e.g. 'Ride', 'Run', 'Padel'). Must match a type
+              intervals.icu recognises — get_sport_settings lists the types
+              each settings group covers.
+    """
+    optional = {"name": name, "description": description, "type": type}
+    body = {k: v for k, v in optional.items() if v is not None}
+    if not body:
+        raise ValueError("Nothing to update — provide at least one of name, description or type.")
+
+    client = await get_client(ctx)
+
+    resp = await client.put(f"/activity/{activity_id}", json=body)
+    return {
+        "message": f"Activity {activity_id} updated: {', '.join(sorted(body))}.",
+        "status": resp.status_code,
+    }
+
+
 @activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
 async def get_activity_messages(ctx: Context, activity_id: str) -> list:
     """Get all messages/comments posted on an activity (athlete and coach feedback).
