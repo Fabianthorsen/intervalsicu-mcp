@@ -5,6 +5,13 @@ import httpx
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 
+from blocks import (
+    METRICS,
+    SUMMARY_FIELDS,
+    ZONE_BOUND_FIELDS,
+    compare_block as compare_block_rows,
+    summarise,
+)
 from client import get_client
 from shaping import CORE_FIELDS, project_and_prune, project_and_prune_list, prune
 from curves import format_curve
@@ -507,6 +514,101 @@ async def delete_activity_intervals(
     return shape_intervals(resp.json(), ["HEADLINE"])
 
 
+@activities.tool(tags={"Activities"})
+async def update_activity(
+    ctx: Context,
+    activity_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    type: str | None = None,
+    rpe: int | None = None,
+    feel: int | None = None,
+    add_tags: list[str] | None = None,
+    remove_tags: list[str] | None = None,
+) -> dict:
+    """Correct an activity's name, description, sport type, RPE, feel or tags.
+
+    Only the fields you provide are changed. `type` is the consequential one:
+    it decides which sport settings group the activity falls under, and
+    therefore which thresholds and zones its load is computed against. A padel
+    match that arrived from a watch as a generic 'Workout' gets no sensible
+    load until its type is right.
+
+    Tags are added and removed rather than replaced. Writing the whole list
+    would silently drop tags that arrived from Strava, the athlete or an
+    earlier pass — a loss that returns 200 and looks like success. Use
+    list_activity_tags first and reuse an existing tag: 'padel' and 'Padel'
+    are two different tags to search_activities, which matches them exactly.
+
+    Changes here are visible to the athlete.
+
+    Args:
+        activity_id: The activity ID (e.g. 'i129230824').
+        name: New activity name.
+        description: New activity description.
+        type: Sport type (e.g. 'Ride', 'Run', 'Padel'). Must match a type
+              intervals.icu recognises — get_sport_settings lists the types
+              each settings group covers.
+        rpe: Rate of perceived exertion, 1-10.
+        feel: How the session felt, 1 (strong) to 5 (terrible).
+        add_tags: Tags to add, keeping the ones already there. Find an activity
+                  by tag later with search_activities using '#tag'.
+        remove_tags: Tags to remove. Matched case-sensitively, as stored.
+    """
+    optional = {
+        "name": name,
+        "description": description,
+        "type": type,
+        "icu_rpe": rpe,
+        "feel": feel,
+    }
+    body = {k: v for k, v in optional.items() if v is not None}
+
+    client = await get_client(ctx)
+
+    if add_tags or remove_tags:
+        # Read-merge-write: the API replaces the whole array, so the current
+        # tags have to be fetched to preserve them.
+        current = await client.get(f"/activity/{activity_id}", params={"fields": "id,tags"})
+        existing = list(current.json().get("tags") or [])
+        removing = set(remove_tags or [])
+        merged = [t for t in existing if t not in removing]
+        for tag in add_tags or []:
+            if tag not in merged:
+                merged.append(tag)
+        body["tags"] = merged
+
+    if not body:
+        raise ValueError(
+            "Nothing to update — provide at least one of name, description, type, "
+            "rpe, feel, add_tags or remove_tags."
+        )
+
+    resp = await client.put(f"/activity/{activity_id}", json=body)
+    return {
+        "message": f"Activity {activity_id} updated: {', '.join(sorted(body))}.",
+        "status": resp.status_code,
+        **({"tags": body["tags"]} if "tags" in body else {}),
+    }
+
+
+@activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
+async def list_activity_tags(ctx: Context, athlete_id: str = "0") -> list:
+    """List every tag already used on this athlete's activities.
+
+    Check here before tagging. search_activities matches tags exactly, so a
+    near-duplicate ('padel' next to 'Padel') quietly splits a set of sessions
+    in two and every later query sees half of them.
+
+    Args:
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+    """
+    client = await get_client(ctx)
+
+    resp = await client.get(f"/athlete/{athlete_id}/activity-tags")
+    return resp.json()
+
+
 @activities.tool(tags={"Activities"}, annotations={"readOnlyHint": True})
 async def get_activity_messages(ctx: Context, activity_id: str) -> list:
     """Get all messages/comments posted on an activity (athlete and coach feedback).
@@ -768,3 +870,145 @@ async def search_activities(
     # distance, moving_time, tags, race, description) rather than a full
     # Activity, so there is nothing to project — only empties to drop.
     return [prune(item) for item in results]
+
+
+@activities.tool(tags={"Analysis"}, annotations={"readOnlyHint": True})
+async def get_load_summary(
+    ctx: Context,
+    from_date: date,
+    to_date: date,
+    athlete_id: str = "0",
+    group_by: str = "week",
+    metric: str | None = None,
+) -> dict:
+    """Totals for a block of training — load, duration and sport split per week or month.
+
+    Answers "how much, of what, and how hard" across a range. For one session
+    use get_activity; to compare a block against what was prescribed use
+    compare_block.
+
+    The sport split is the point when training is mixed: during a camp,
+    cycling load can collapse while total load doubles, and a single aggregate
+    number hides that completely.
+
+    Pass `metric` to add zone-time distribution and the Z1-2 / Z3 / Z4+
+    intensity split, pooled from seconds so a long ride counts for more than a
+    short one. Sessions without that metric — padel has no power — are excluded
+    from the split and reported as `sessions_without_metric` rather than
+    counted as zero. This split is a time distribution, not intervals.icu's
+    per-activity `polarization_index`, which is a different quantity.
+
+    Weeks are ISO weeks and start on Monday.
+
+    Args:
+        from_date: Earliest date to include (ISO-8601).
+        to_date: Latest date to include (ISO-8601).
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+        group_by: 'week' (default) or 'month'.
+        metric: Optional — 'power', 'hr' or 'pace'. Adds the zone distribution
+                and intensity split for sessions that recorded it.
+    """
+    if group_by not in ("week", "month"):
+        raise ValueError(f"group_by must be 'week' or 'month', got '{group_by}'.")
+    if metric is not None and metric not in METRICS:
+        raise ValueError(f"metric must be one of {', '.join(METRICS)}, got '{metric}'.")
+
+    client = await get_client(ctx)
+
+    data = await client.get(
+        f"/athlete/{athlete_id}/activities",
+        params=httpx.QueryParams(
+            oldest=from_date.isoformat(),
+            newest=to_date.isoformat(),
+            # One scoped call for the whole block. An Activity carries ~200
+            # fields; the reducers read fifteen.
+            fields=",".join(SUMMARY_FIELDS),
+        ),
+    )
+    records = data.json()
+
+    summary = summarise(records, group_by=group_by, metric=metric)
+    summary["from_date"] = from_date.isoformat()
+    summary["to_date"] = to_date.isoformat()
+    return summary
+
+
+@activities.tool(tags={"Analysis"}, annotations={"readOnlyHint": True})
+async def compare_block(
+    ctx: Context,
+    from_date: date,
+    to_date: date,
+    athlete_id: str = "0",
+    metric: str | None = None,
+    zone: str | None = None,
+) -> dict:
+    """Compare a block of training against what was prescribed.
+
+    Joins each completed activity to its planned event and reports prescribed
+    load and duration against actual, per session and pooled. Activities with
+    no plan are reported as unplanned; planned workouts with no activity are
+    reported as missed, because a block's discipline is as much about what did
+    not happen as what did. intervals.icu's own `compliance` figure is passed
+    through untouched rather than recomputed.
+
+    Pass `metric` and `zone` together to add zone adherence — for a Z2 ceiling
+    question, metric='power', zone='Z2'. Two percentages come back per session
+    and pooled: `under_ceiling_pct` (time at or below the zone's upper bound —
+    the discipline number) and `in_band_pct` (time inside the zone, which also
+    counts descents and stops as misses). Read together they separate "rode
+    too hard" from "rode too easy".
+
+    Each session is judged against its own zones, so a ride from before an FTP
+    change is measured against the ceiling it was actually given. When the
+    ceiling moved during the block, the pooled result says so.
+
+    Adherence is whole-session, not narrowed to the prescribed steps: the API
+    exposes a planned workout's structure only as an untyped document. For a
+    session prescribed entirely in one zone the two are identical; for a mixed
+    session the number describes the whole ride.
+
+    Sessions without the requested metric — padel has no power — are excluded
+    and counted in `sessions_without_metric`, never scored as zero.
+
+    Args:
+        from_date: Earliest date to include (ISO-8601).
+        to_date: Latest date to include (ISO-8601).
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+        metric: 'power', 'hr' or 'pace'. Required for adherence, with `zone`.
+        zone: Zone to score adherence against, e.g. 'Z2'. Resolved to watts or
+              bpm per activity from that activity's own zones.
+    """
+    if metric is not None and metric not in METRICS:
+        raise ValueError(f"metric must be one of {', '.join(METRICS)}, got '{metric}'.")
+    if bool(metric) != bool(zone):
+        raise ValueError("metric and zone must be given together, or not at all.")
+
+    client = await get_client(ctx)
+
+    activity_fields = list(SUMMARY_FIELDS)
+    if metric:
+        activity_fields.append(ZONE_BOUND_FIELDS[metric])
+
+    activities_resp = await client.get(
+        f"/athlete/{athlete_id}/activities",
+        params=httpx.QueryParams(
+            oldest=from_date.isoformat(),
+            newest=to_date.isoformat(),
+            fields=",".join(activity_fields),
+        ),
+    )
+    events_resp = await client.get(
+        f"/athlete/{athlete_id}/events",
+        params=httpx.QueryParams(
+            oldest=from_date.isoformat(),
+            newest=to_date.isoformat(),
+            category="WORKOUT",
+        ),
+    )
+
+    result = compare_block_rows(
+        activities_resp.json(), events_resp.json(), metric=metric, zone=zone
+    )
+    result["from_date"] = from_date.isoformat()
+    result["to_date"] = to_date.isoformat()
+    return result
