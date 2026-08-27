@@ -89,6 +89,13 @@ fly auth login
 ./scripts/deploy_fly.sh
 ```
 
+On Windows, or anywhere without bash, run the Python port instead — it does the same
+thing:
+
+```powershell
+uv run python scripts/deploy_fly.py
+```
+
 The script creates the app and its volume, prints the exact Homepage and callback URLs
 to paste into a new GitHub OAuth App, generates a `JWT_SIGNING_KEY`, sets every secret,
 and deploys. It keeps the app name consistent across `fly.toml`, the callback URL and
@@ -110,6 +117,7 @@ client.
 | `JWT_SIGNING_KEY` | `openssl rand -hex 32` |
 | `ALLOWED_GITHUB_USERS` | Comma-separated GitHub usernames allowed to connect |
 | `PUBLIC_BASE_URL` | `https://your-app-name.fly.dev` — must match the OAuth callback host |
+| Callback URL | Not a secret — set `https://your-app-name.fly.dev/auth/callback` as the OAuth App's Authorization callback URL |
 
 GitHub auth switches on only when `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` and
 `JWT_SIGNING_KEY` are all set. To keep a missing secret from quietly exposing the

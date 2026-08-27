@@ -123,7 +123,13 @@ fi
 
 # --- API key -----------------------------------------------------------------
 
+# .env values are commonly quoted, and python-dotenv strips those for a local
+# run. Fly does not, so an unstripped key ships to the server as
+# INTERVALS_API_KEY="abc" — quotes included — and intervals.icu returns 401.
 INTERVALS_API_KEY=$(sed -n 's/^INTERVALS_API_KEY=\(.*\)/\1/p' .env 2>/dev/null | tail -1)
+INTERVALS_API_KEY=$(scrub "$INTERVALS_API_KEY")
+INTERVALS_API_KEY=${INTERVALS_API_KEY%\"}; INTERVALS_API_KEY=${INTERVALS_API_KEY#\"}
+INTERVALS_API_KEY=${INTERVALS_API_KEY%\'}; INTERVALS_API_KEY=${INTERVALS_API_KEY#\'}
 if [[ -n $INTERVALS_API_KEY ]]; then
   echo "ok    INTERVALS_API_KEY read from .env"
 else
