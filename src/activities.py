@@ -5,6 +5,7 @@ import httpx
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 
+from blocks import METRICS, SUMMARY_FIELDS, summarise
 from client import get_client
 from shaping import CORE_FIELDS, project_and_prune, project_and_prune_list, prune
 from curves import format_curve
@@ -808,3 +809,64 @@ async def search_activities(
     # distance, moving_time, tags, race, description) rather than a full
     # Activity, so there is nothing to project — only empties to drop.
     return [prune(item) for item in results]
+
+
+@activities.tool(tags={"Analysis"}, annotations={"readOnlyHint": True})
+async def get_load_summary(
+    ctx: Context,
+    from_date: date,
+    to_date: date,
+    athlete_id: str = "0",
+    group_by: str = "week",
+    metric: str | None = None,
+) -> dict:
+    """Totals for a block of training — load, duration and sport split per week or month.
+
+    Answers "how much, of what, and how hard" across a range. For one session
+    use get_activity; to compare a block against what was prescribed use
+    compare_block.
+
+    The sport split is the point when training is mixed: during a camp,
+    cycling load can collapse while total load doubles, and a single aggregate
+    number hides that completely.
+
+    Pass `metric` to add zone-time distribution and the Z1-2 / Z3 / Z4+
+    intensity split, pooled from seconds so a long ride counts for more than a
+    short one. Sessions without that metric — padel has no power — are excluded
+    from the split and reported as `sessions_without_metric` rather than
+    counted as zero. This split is a time distribution, not intervals.icu's
+    per-activity `polarization_index`, which is a different quantity.
+
+    Weeks are ISO weeks and start on Monday.
+
+    Args:
+        from_date: Earliest date to include (ISO-8601).
+        to_date: Latest date to include (ISO-8601).
+        athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
+        group_by: 'week' (default) or 'month'.
+        metric: Optional — 'power', 'hr' or 'pace'. Adds the zone distribution
+                and intensity split for sessions that recorded it.
+    """
+    if group_by not in ("week", "month"):
+        raise ValueError(f"group_by must be 'week' or 'month', got '{group_by}'.")
+    if metric is not None and metric not in METRICS:
+        raise ValueError(f"metric must be one of {', '.join(METRICS)}, got '{metric}'.")
+
+    client = await get_client(ctx)
+
+    data = await client.get(
+        f"/athlete/{athlete_id}/activities",
+        params=httpx.QueryParams(
+            oldest=from_date.isoformat(),
+            newest=to_date.isoformat(),
+            # One scoped call for the whole block. An Activity carries ~200
+            # fields; the reducers read fifteen.
+            fields=",".join(SUMMARY_FIELDS),
+        ),
+    )
+    records = data.json()
+
+    summary = summarise(records, group_by=group_by, metric=metric)
+    summary["from_date"] = from_date.isoformat()
+    summary["to_date"] = to_date.isoformat()
+    return summary
