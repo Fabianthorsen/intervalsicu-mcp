@@ -380,9 +380,13 @@ message rather than guessing.
 
 ### Keeping your fork up to date
 
-`Sync fork with upstream` picks up new upstream commits and deploys them, so an instance
-you set up once keeps getting improvements. It runs **Mondays at 06:00 UTC**, and from the
-**Run workflow** button whenever you want it sooner.
+`Sync fork with upstream` picks up new upstream commits and deploys them in one go. Open
+your fork's **Actions** tab, choose that workflow, and click **Run workflow**. That is the
+whole update: it syncs and deploys, and you see both in one run.
+
+It is deliberately manual. Syncing pulls in upstream code and puts it straight on your
+server, so it happens when you decide it does rather than on a timer. If you would rather
+it were periodic, add a `schedule:` block to `.github/workflows/sync-fork.yml`.
 
 It fast-forwards `main` only. If you have your own commits on `main` it stops, says so,
 and changes nothing — it will never overwrite your work. It also deploys only when the
@@ -392,13 +396,8 @@ The sync and the deploy happen in the same run on purpose. A fast-forward pushed
 workflow does not raise a `push` event — GitHub suppresses that so workflows cannot
 retrigger themselves — so a separate deploy run would never see it.
 
-Two GitHub behaviours to know about, neither of which anyone can automate away:
-
-- Scheduled workflows are disabled in a new fork until you enable Actions, the same click
-  as above.
-- On a public repository, GitHub disables scheduled workflows after 60 days with no
-  activity. If your fork goes quiet that long, the Monday run stops until you visit the
-  Actions tab and re-enable it. The **Run workflow** button always works regardless.
+Like every workflow in a new fork, it does not appear until you enable Actions — the same
+click as above.
 
 ---
 

@@ -12,8 +12,9 @@ name: Sync fork with upstream
 # to have on both sides.
 
 on:
-  schedule:
-    - cron: "0 6 * * 1" # Mondays, 06:00 UTC
+  # Manual only, by design: syncing pulls in upstream code and deploys it to
+  # your server, so it happens when you decide it does. Adding a `schedule:`
+  # block here is all it takes to make it periodic instead.
   workflow_dispatch:
 
 permissions:
