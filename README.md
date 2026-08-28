@@ -9,7 +9,7 @@ that walkthrough end to end — each is self-contained.
 
 | | **Local** | **Remote** |
 | --- | --- | --- |
-| Runs on | Your machine, started by your MCP client | A Fly.io app, always on |
+| Runs on | Your machine, started by your MCP client | A server you host, always on. The scripts automate Fly.io; any container host works |
 | Good for | One person, one computer | Using it from phone/web, or sharing with a few people |
 | Auth | None needed — it is already your machine and your key | GitHub OAuth, restricted to an allowlist you control |
 | Works with | Claude Code, Claude Desktop | Claude Code, Claude Desktop, claude.ai |
@@ -128,6 +128,11 @@ own numbers, you are done.
 
 Runs the server as an always-on HTTP deployment behind GitHub OAuth, so you (and anyone
 you allowlist) can reach it from any client, including claude.ai on a phone.
+
+**Nothing here is Fly-specific.** The server is an ordinary containerised HTTP app, and
+`Dockerfile` has no Fly in it. Fly.io is simply what these scripts automate, because a
+one-command path beats a list of steps. If you would rather host it elsewhere, skip to
+[hosting somewhere else](#hosting-somewhere-other-than-flyio) — the requirements are short.
 
 **You need:** a [Fly.io](https://fly.io) account, a GitHub account,
 your intervals.icu API key, and `uv` for the setup script.
@@ -334,6 +339,31 @@ It is safe to run again, any time. Existing apps, volumes and signing keys are l
 — rotating the signing key would invalidate every token already issued and log everyone
 out — and nothing is created or deployed until you confirm. **Re-run it to change the
 allowlist**, which is the usual reason to come back to it.
+
+### Hosting somewhere other than Fly.io
+
+`Dockerfile` is a plain Python container with no Fly-specific anything, so Render, Railway,
+a VPS running Docker, Kubernetes, or anything else that runs a container will serve it.
+What the server actually needs is short:
+
+| Requirement | Why |
+| --- | --- |
+| Run the container, listening on `$PORT` | `MCP_TRANSPORT=http` and `PORT=8000` are baked into the image; override `PORT` if your host assigns one |
+| **HTTPS on a stable hostname** | The GitHub OAuth callback is registered against one fixed URL. A host that changes your hostname between deploys breaks the login every time |
+| The environment variables below | Same set the Fly deployment uses |
+| A **persistent directory** at `$FASTMCP_HOME` | Holds OAuth client registrations. On ephemeral storage it survives until the next restart, after which clients must re-authenticate |
+
+Set the same variables listed in the table below, and register the OAuth App exactly as in
+step 6 — using your own host's URL in place of `https://<your-app>.fly.dev`.
+
+One to watch: **`PUBLIC_BASE_URL` has a default, and that default is the maintainer's Fly
+deployment.** Unlike the three auth variables, a missing value here does not stop the
+server — it starts and builds its OAuth redirects against the wrong host, which is a
+confusing way to spend an afternoon. Set it explicitly to your own base URL.
+
+The GitHub Actions workflows in this repo deploy to Fly and nothing else. On another host,
+either use that host's own deploy-on-push integration or replace the `Deploy` step in
+`.github/workflows/deploy.yml`; everything before it is generic.
 
 ### What it sets, if you prefer doing it by hand
 
