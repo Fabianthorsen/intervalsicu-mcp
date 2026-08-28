@@ -1,0 +1,12 @@
+# Every pull request automatically requests a review from the owner listed here.
+#
+# GitHub never requests a review from the PR's own author, so your own pull
+# requests will not show a request from you — that is the rule working, not a
+# broken file. It takes effect for pull requests opened against a branch that
+# already has this file, so it starts working once it is on main.
+#
+# A single catch-all is deliberate: with one maintainer, per-directory rules
+# would all resolve to the same person and only add noise. Split it when there
+# is someone else to split it with.
+
+* @Fabianthorsen
