@@ -54,6 +54,7 @@ EVENT_TAXONOMY = {
         "hide_from_athlete",
         "athlete_cannot_edit",
         "show_as_note",
+        "for_week",
     ],
     "METADATA": [
         "color",
@@ -301,6 +302,7 @@ async def create_note(
     category: str = "NOTE",
     color: str | None = None,
     tags: list[str] | None = None,
+    for_week: bool | None = None,
     athlete_id: str = "0",
 ) -> dict:
     """Create a note or a whole-day marker on an athlete's calendar.
@@ -322,6 +324,10 @@ async def create_note(
                similar events rather than inventing one — list_events with
                include=['METADATA'] returns the colour in use.
         tags: Tags to attach to the event.
+        for_week: If True, the note belongs to the week containing `date` rather
+                  than to that day — it appears once on the week, not in a day
+                  cell. Use it to label a training block's week ("Build 2 — 9h,
+                  threshold focus"); `date` can be any day in that week.
         athlete_id: Athlete ID (e.g. 'i12345'). Use '0' for the authenticated user (default).
     """
     category = category.upper()
@@ -338,7 +344,7 @@ async def create_note(
     }
     if end_date:
         body["end_date_local"] = f"{end_date}T00:00:00"
-    optional = {"color": color, "tags": tags}
+    optional = {"color": color, "tags": tags, "for_week": for_week}
     body.update({k: v for k, v in optional.items() if v is not None})
     client = await get_client(ctx)
 
@@ -578,6 +584,7 @@ class EventSpec(TypedDict, total=False):
     color: str
     tags: list[str]
     hide_from_athlete: bool
+    for_week: bool
 
 
 BATCH_CATEGORIES = (
@@ -599,6 +606,7 @@ _SPEC_PASSTHROUGH = (
     "color",
     "tags",
     "hide_from_athlete",
+    "for_week",
 )
 
 
