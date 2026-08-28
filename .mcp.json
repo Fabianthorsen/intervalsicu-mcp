@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "intervals-icu": {
-      "type": "http",
-      "url": "https://intervalsicu-mcp.fly.dev/mcp"
-    }
-  }
-}

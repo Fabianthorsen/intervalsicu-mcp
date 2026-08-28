@@ -16,3 +16,8 @@ openapi-spec.json
 
 # Generated from fly.toml.template by scripts/deploy_fly.{sh,py}
 fly.toml
+
+# Per-user MCP client config. The right contents differ for a local run (a stdio
+# command with your absolute paths, which check_setup.py prints) and a remote one
+# (your own Fly URL), so there is nothing useful to share. See the README.
+.mcp.json

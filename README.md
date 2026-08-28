@@ -117,9 +117,10 @@ Restart the client and ask it something only this server can answer:
 If it calls `get_wellness` or `list_activities_between_dates` and comes back with your
 own numbers, you are done.
 
-> **Note on `.mcp.json`:** the copy checked into this repo points at the maintainer's
-> hosted server, which is locked to an allowlist you are not on. It is there for the
-> maintainer's own use — ignore it and use the command above.
+> **On `.mcp.json`:** Claude Code reads a project-scoped MCP config from this file. It is
+> gitignored rather than checked in, because the right contents are different for every
+> person — a stdio command with your absolute paths for a local run, your own Fly URL for
+> a remote one. The commands above create it for you; there is nothing to copy.
 
 ---
 
