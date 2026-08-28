@@ -1,0 +1,83 @@
+name: Sync fork with upstream
+
+# Keeps a fork's main up to date with the upstream project and deploys the
+# result, so an instance you set up once keeps getting improvements.
+#
+# The sync and the deploy happen in one run on purpose. A fast-forward pushed
+# with GITHUB_TOKEN does not raise a push event — GitHub suppresses that so
+# workflows cannot retrigger themselves — so deploy.yml would never see it.
+# Calling deploy.yml from here is what closes that gap.
+#
+# On the upstream repo itself this finds no parent and stops, so it is harmless
+# to have on both sides.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays, 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    outputs:
+      updated: ${{ steps.sync.outputs.updated }}
+    steps:
+      # actions/checkout leaves its token in the local git config, which is what
+      # authenticates the push below.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fast-forward main from upstream
+        id: sync
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          finish() { echo "updated=$1" >> "$GITHUB_OUTPUT"; exit 0; }
+
+          # Assigned separately from the `if`, because under `set -e` a failing
+          # command substitution would otherwise kill the step with no output
+          # and no `updated` value for the deploy job to read.
+          if ! UPSTREAM=$(gh api "repos/${{ github.repository }}" --jq '.parent.full_name // empty'); then
+            echo "::error::Could not query ${{ github.repository }} to find its upstream."
+            exit 1
+          fi
+          if [ -z "$UPSTREAM" ]; then
+            echo "No parent repository — this is not a fork, so there is nothing to sync."
+            finish false
+          fi
+          echo "Upstream is $UPSTREAM"
+
+          git remote add upstream "https://github.com/$UPSTREAM.git"
+          git fetch --quiet upstream main
+
+          BEFORE=$(git rev-parse HEAD)
+          # --ff-only so your own commits on main are never clobbered. If main has
+          # diverged this stops and leaves the branch exactly as it was.
+          if ! git merge --ff-only upstream/main; then
+            echo "::warning::main has diverged from upstream and cannot be fast-forwarded. Merge it yourself; nothing was changed."
+            finish false
+          fi
+
+          AFTER=$(git rev-parse HEAD)
+          if [ "$BEFORE" = "$AFTER" ]; then
+            echo "Already up to date with $UPSTREAM."
+            finish false
+          fi
+
+          git push origin HEAD:main
+          echo "Synced $(git rev-parse --short "$BEFORE") -> $(git rev-parse --short "$AFTER")"
+          finish true
+
+  # Only reached when the sync actually moved main, so an up-to-date fork does
+  # not redeploy every Monday for nothing.
+  deploy:
+    needs: sync
+    if: needs.sync.outputs.updated == 'true'
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit
