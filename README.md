@@ -298,6 +298,35 @@ rendered into a local file as well as stored as `FLY_APP` — same value, two pl
 need it, one template they both come from. A fresh clone has no `fly.toml` until you run
 the deploy script.
 
+### Upgrading a fork you already deployed
+
+Only applies if you forked **before** `fly.toml` became a generated file. Your fork has
+its own committed `fly.toml`, so the first sync after this change stops on one conflict:
+
+```
+CONFLICT (modify/delete): fly.toml deleted in upstream and modified in HEAD.
+```
+
+Resolve it by untracking the file while keeping it on disk. It already names your app,
+and it is byte-identical to what the template renders — so there is nothing to redo:
+
+```bash
+git rm --cached fly.toml
+git commit
+```
+
+Your local `fly deploy` carries on unchanged. One step is left, and it is for CI only:
+set the `FLY_APP` repository variable, since the workflow no longer has a tracked
+`fly.toml` to read your app name from.
+
+```bash
+gh variable set FLY_APP --body "<your-app>"
+```
+
+Until you do, a deploy run fails with an explicit message rather than deploying somewhere
+unexpected. This is a one-time migration — later syncs touch neither file, which is the
+whole point of the change.
+
 ### Re-running the script
 
 It is safe to run again, any time. Existing apps, volumes and signing keys are left alone
