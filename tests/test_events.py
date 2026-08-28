@@ -101,6 +101,27 @@ def test_event_body_omits_unset_fields():
     assert "end_date_local" not in body
 
 
+def test_event_body_passes_through_for_week():
+    """A week note is how a block's weeks get labelled, so the batch path must carry it."""
+    body = _event_body(
+        {"date": "2026-03-10", "name": "Build 2 — 9h", "category": "NOTE", "for_week": True}
+    )
+    assert body["for_week"] is True
+
+
+def test_event_body_keeps_for_week_false():
+    """False is a meaningful value here, not an absent one — it must not be pruned."""
+    body = _event_body(
+        {"date": "2026-03-10", "name": "Day note", "category": "NOTE", "for_week": False}
+    )
+    assert body["for_week"] is False
+
+
+def test_event_body_omits_for_week_when_unset():
+    body = _event_body({"date": "2026-03-10", "name": "Day note", "category": "NOTE"})
+    assert "for_week" not in body
+
+
 def test_event_body_maps_end_date():
     body = _event_body(
         {"date": "2026-03-10", "name": "Alps", "category": "HOLIDAY", "end_date": "2026-03-17"}
