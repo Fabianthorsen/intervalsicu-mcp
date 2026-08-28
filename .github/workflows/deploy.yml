@@ -11,6 +11,8 @@ on:
   # Fork syncs done through the GitHub web button do not always raise a push
   # event, so leave a manual trigger for that case.
   workflow_dispatch:
+  # Lets sync-fork.yml deploy in the same run as the sync it just performed.
+  workflow_call:
 
 concurrency:
   group: deploy-${{ github.ref }}
