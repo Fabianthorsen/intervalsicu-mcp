@@ -13,3 +13,6 @@ wheels/
 .env
 
 openapi-spec.json
+
+# Generated from fly.toml.template by scripts/deploy_fly.{sh,py}
+fly.toml

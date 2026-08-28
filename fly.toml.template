@@ -1,0 +1,34 @@
+# Template for fly.toml, which is generated and gitignored.
+#
+# APP_NAME is substituted with your Fly app name by scripts/deploy_fly.{sh,py},
+# and by .github/workflows/deploy.yml from the FLY_APP repository variable.
+# Keeping the real fly.toml out of git is what lets a fork stay identical to
+# upstream, so syncing never conflicts on a one-line app name.
+#
+# Edit this file for any other Fly config change; fly.toml is overwritten.
+
+app = "APP_NAME"
+primary_region = "ams"
+
+[build]
+
+[env]
+  MCP_TRANSPORT = "http"
+  PORT = "8000"
+  FASTMCP_HOME = "/fastmcp_data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[[mounts]]
+  source = "fastmcp_data"
+  destination = "/fastmcp_data"
