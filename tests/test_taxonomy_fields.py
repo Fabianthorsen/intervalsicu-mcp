@@ -46,6 +46,19 @@ def _schema_properties(name: str) -> set[str]:
     return set(schema.get("properties", {}))
 
 
+# The spec is not in the repo — it is third-party, large, and fetched on demand.
+# Only this check reads it, so skip just this one rather than failing a fresh
+# clone with errors that have nothing to do with the change being tested.
+needs_spec = pytest.mark.skipif(
+    not SPEC_PATH.exists(),
+    reason=(
+        "openapi-spec.json not found. Fetch it to run this check: "
+        "curl -o openapi-spec.json https://intervals.icu/api/v1/docs"
+    ),
+)
+
+
+@needs_spec
 @pytest.mark.parametrize("resource", sorted(TAXONOMIES))
 def test_taxonomy_fields_exist_in_schema(resource: str) -> None:
     taxonomy, schema_name = TAXONOMIES[resource]
