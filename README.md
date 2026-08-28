@@ -13,7 +13,7 @@ that walkthrough end to end — each is self-contained.
 | Good for | One person, one computer | Using it from phone/web, or sharing with a few people |
 | Auth | None needed — it is already your machine and your key | GitHub OAuth, restricted to an allowlist you control |
 | Works with | Claude Code, Claude Desktop | Claude Code, Claude Desktop, claude.ai |
-| Costs | Nothing | A Fly.io account (a 256MB machine, which is cheap but not free) |
+| Costs | Nothing | A Fly.io account. This runs one small always-on machine and a 1GB volume — see [Fly.io pricing](https://fly.io/pricing/) for what that comes to |
 | Setup time | ~5 minutes | ~20 minutes, mostly the GitHub OAuth app |
 
 Both need an intervals.icu API key. Get it now, from intervals.icu →
@@ -129,7 +129,7 @@ own numbers, you are done.
 Runs the server as an always-on HTTP deployment behind GitHub OAuth, so you (and anyone
 you allowlist) can reach it from any client, including claude.ai on a phone.
 
-**You need:** a [Fly.io](https://fly.io) account with billing set up, a GitHub account,
+**You need:** a [Fly.io](https://fly.io) account, a GitHub account,
 your intervals.icu API key, and `uv` for the setup script.
 
 **Read this first.** The setup script is a single interactive run that pauses in the
